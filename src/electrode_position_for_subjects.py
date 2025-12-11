@@ -1,70 +1,19 @@
 import numpy as np
 import pandas as pd
-import nibabel as nib
-import pyvista as pv
-from nilearn import datasets
 from pathlib import Path
+from nilearn import plotting, datasets
 import matplotlib.pyplot as plt
-
-
-def load_gii_surface(file):
-    """Load GIFTI surface file and convert to PyVista mesh."""
-    gii = nib.load(file)
-    coords = gii.darrays[0].data
-    faces = gii.darrays[1].data
-    # Convert faces to PyVista format
-    n_faces = faces.shape[0]
-    faces_pv = np.hstack([np.full((n_faces, 1), 3), faces]).astype(np.int32).ravel()
-    mesh = pv.PolyData(coords, faces_pv)
-    return mesh
-
-
-def load_subject_electrodes(data_dir, subject_id):
-    """Load electrode coordinates for a specific subject."""
-    # Updated path to include 'ieeg' subfolder
-    electrode_file = Path(data_dir) / f"sub-{subject_id}" / "ieeg" / f"sub-{subject_id}_electrodes.tsv"
-    
-    if electrode_file.exists():
-        df = pd.read_csv(electrode_file, sep='\t')
-        
-        # Print columns for first subject to help debug
-        if subject_id == '01':
-            print(f"Columns in electrode file: {list(df.columns)}")
-            print(f"First row:\n{df.head(1)}")
-        
-        # Extract x, y, z coordinates (assuming columns are named 'x', 'y', 'z' or similar)
-        # Adjust column names based on your actual data
-        if all(col in df.columns for col in ['x', 'y', 'z']):
-            coords = df[['x', 'y', 'z']].values
-        elif all(col in df.columns for col in ['X', 'Y', 'Z']):
-            coords = df[['X', 'Y', 'Z']].values
-        else:
-            # Try to find MNI coordinate columns
-            coord_cols = [col for col in df.columns if any(x in col.lower() for x in ['mni', 'coord'])]
-            if len(coord_cols) >= 3:
-                coords = df[coord_cols[:3]].values
-            else:
-                print(f"Warning: Could not find coordinate columns for {subject_id}")
-                print(f"Available columns: {list(df.columns)}")
-                return None, None
-        
-        electrode_names = df['name'].values if 'name' in df.columns else None
-        return coords, electrode_names
-    else:
-        print(f"Electrode file not found for {subject_id}: {electrode_file}")
-        return None, None
+from matplotlib.patches import Circle
 
 
 def load_all_subjects_electrodes(data_dir):
     """Load electrodes for all subjects."""
-    # Read participants file to get all subject IDs
     participants_file = Path(data_dir) / "participants.tsv"
     
     if participants_file.exists():
         participants = pd.read_csv(participants_file, sep='\t')
         subject_ids = participants['participant_id'].str.replace('sub-', '').values
     else:
-        # If participants.tsv doesn't exist, scan directories
         subject_dirs = [d for d in Path(data_dir).glob("sub-*") if d.is_dir()]
         subject_ids = [d.name.replace('sub-', '') for d in subject_dirs]
     
@@ -72,149 +21,272 @@ def load_all_subjects_electrodes(data_dir):
     subject_labels = []
     
     for subject_id in subject_ids:
-        coords, names = load_subject_electrodes(data_dir, subject_id)
-        if coords is not None and len(coords) > 0:
+        electrode_file = Path(data_dir) / f"sub-{subject_id}" / "ieeg" / f"sub-{subject_id}_electrodes.tsv"
+        
+        if electrode_file.exists():
+            df = pd.read_csv(electrode_file, sep='\t')
+            
+            if all(col in df.columns for col in ['x', 'y', 'z']):
+                coords = df[['x', 'y', 'z']].values
+            elif all(col in df.columns for col in ['X', 'Y', 'Z']):
+                coords = df[['X', 'Y', 'Z']].values
+            else:
+                coord_cols = [col for col in df.columns if any(x in col.lower() for x in ['mni', 'coord'])]
+                if len(coord_cols) >= 3:
+                    coords = df[coord_cols[:3]].values
+                else:
+                    continue
+            
             all_electrodes.append(coords)
             subject_labels.extend([subject_id] * len(coords))
             print(f"Loaded {len(coords)} electrodes for subject {subject_id}")
     
     if all_electrodes:
         all_electrodes = np.vstack(all_electrodes)
-        return all_electrodes, subject_labels, subject_ids
+        return all_electrodes, subject_labels
     else:
-        print("No electrode data found!")
-        return None, None, None
+        return None, None
 
 
-def plot_electrodes_on_brain(all_electrodes, subject_labels=None, 
-                             electrode_size=2.0, opacity=0.5, 
-                             color_by_subject=True):
-    """Plot all electrodes on the fsaverage brain template."""
+def create_comprehensive_plot(all_electrodes, subject_labels, output_file='electrodes_plot.png'):
+    """
+    Create a comprehensive multi-view plot of electrodes.
+    """
+    # Prepare colors
+    unique_subjects = list(set(subject_labels))
+    n_subjects = len(unique_subjects)
+    colors_array = plt.cm.tab20(np.linspace(0, 1, n_subjects))
+    subject_color_map = {subj: colors_array[i] for i, subj in enumerate(unique_subjects)}
+    subject_to_value = {subj: i for i, subj in enumerate(unique_subjects)}
+    node_values = np.array([subject_to_value[label] for label in subject_labels])
     
-    # Load fsaverage surface (GIFTI files)
-    print("Loading fsaverage brain template...")
-    fsaverage = datasets.fetch_surf_fsaverage()
-    lh_file = fsaverage['pial_left']
-    rh_file = fsaverage['pial_right']
+    # Create figure with multiple subplots
+    fig = plt.figure(figsize=(20, 10))
     
-    # Convert surfaces to PyVista meshes
-    lh_mesh = load_gii_surface(lh_file)
-    rh_mesh = load_gii_surface(rh_file)
+    # 1. Ortho view (top left)
+    ax1 = plt.subplot(2, 3, 1)
+    display1 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=15,
+        node_cmap='tab20',
+        display_mode='ortho',
+        colorbar=False,
+        title='Orthogonal View',
+        figure=fig,
+        axes=ax1
+    )
     
-    # Create a plotter
-    plotter = pv.Plotter(window_size=[1200, 800])
+    # 2. Left hemisphere (top middle)
+    ax2 = plt.subplot(2, 3, 2)
+    display2 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=15,
+        node_cmap='tab20',
+        display_mode='lzr',
+        colorbar=False,
+        title='Left Hemisphere',
+        figure=fig,
+        axes=ax2
+    )
     
-    # Add brain hemispheres
-    plotter.add_mesh(lh_mesh, color='lightgrey', opacity=opacity, 
-                     smooth_shading=True)
-    plotter.add_mesh(rh_mesh, color='lightgrey', opacity=opacity, 
-                     smooth_shading=True)
+    # 3. Right hemisphere (top right)
+    ax3 = plt.subplot(2, 3, 3)
+    display3 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=15,
+        node_cmap='tab20',
+        display_mode='r',
+        colorbar=False,
+        title='Right Hemisphere',
+        figure=fig,
+        axes=ax3
+    )
     
-    # Add electrodes
-    if color_by_subject and subject_labels is not None:
-        # Create color map for different subjects
-        unique_subjects = list(set(subject_labels))
-        n_subjects = len(unique_subjects)
-        colors = plt.cm.tab20(np.linspace(0, 1, n_subjects))
-        
-        subject_color_map = {subj: colors[i] for i, subj in enumerate(unique_subjects)}
-        
-        for i, (x, y, z) in enumerate(all_electrodes):
-            color = subject_color_map[subject_labels[i]][:3]  # RGB only
-            sphere = pv.Sphere(radius=electrode_size, center=(x, y, z))
-            plotter.add_mesh(sphere, color=color, opacity=0.8)
-    else:
-        # Single color for all electrodes
-        for x, y, z in all_electrodes:
-            sphere = pv.Sphere(radius=electrode_size, center=(x, y, z))
-            plotter.add_mesh(sphere, color='red', opacity=0.8)
+    # 4. Axial slices (bottom left)
+    ax4 = plt.subplot(2, 3, 4)
+    display4 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=15,
+        node_cmap='tab20',
+        display_mode='z',
+        colorbar=False,
+        title='Axial View',
+        figure=fig,
+        axes=ax4
+    )
     
-    # Set camera position and add text
-    plotter.camera_position = 'xy'
-    plotter.add_text(f"Total electrodes: {len(all_electrodes)}", 
-                     position='upper_left', font_size=12)
+    # 5. Sagittal slices (bottom middle)
+    ax5 = plt.subplot(2, 3, 5)
+    display5 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=15,
+        node_cmap='tab20',
+        display_mode='x',
+        colorbar=False,
+        title='Sagittal View',
+        figure=fig,
+        axes=ax5
+    )
     
-    # Add axes
-    plotter.add_axes()
+    # 6. Coronal slices (bottom right)
+    ax6 = plt.subplot(2, 3, 6)
+    display6 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=15,
+        node_cmap='tab20',
+        display_mode='y',
+        colorbar=False,
+        title='Coronal View',
+        figure=fig,
+        axes=ax6
+    )
     
-    print(f"Displaying {len(all_electrodes)} electrodes from {len(set(subject_labels)) if subject_labels else 'unknown'} subjects")
-    plotter.show()
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print(f"Plot saved to {output_file}")
 
 
-def explore_dataset_structure(data_dir):
-    """Explore and print dataset structure to help debug."""
-    data_path = Path(data_dir)
+def plot_single_subject_on_slices(data_dir, subject_id, output_file=None):
+    """
+    Plot a single subject's electrodes on anatomical slices.
+    """
+    electrode_file = Path(data_dir) / f"sub-{subject_id}" / "ieeg" / f"sub-{subject_id}_electrodes.tsv"
     
-    print(f"Checking directory: {data_path}")
-    print(f"Directory exists: {data_path.exists()}")
-    
-    if not data_path.exists():
-        print("ERROR: Directory does not exist!")
+    if not electrode_file.exists():
+        print(f"Electrode file not found: {electrode_file}")
         return
     
-    print("\n=== Directory Contents ===")
-    for item in sorted(data_path.iterdir()):
-        print(f"  {item.name}")
+    df = pd.read_csv(electrode_file, sep='\t')
     
-    print("\n=== Subject Directories ===")
-    subject_dirs = sorted([d for d in data_path.glob("sub-*") if d.is_dir()])
-    print(f"Found {len(subject_dirs)} subject directories")
+    if all(col in df.columns for col in ['x', 'y', 'z']):
+        coords = df[['x', 'y', 'z']].values
+    elif all(col in df.columns for col in ['X', 'Y', 'Z']):
+        coords = df[['X', 'Y', 'Z']].values
+    else:
+        print("Could not find coordinate columns")
+        return
     
-    if subject_dirs:
-        # Check first subject directory
-        first_subj = subject_dirs[0]
-        print(f"\n=== Contents of {first_subj.name} ===")
-        for item in sorted(first_subj.iterdir()):
-            print(f"  {item.name}")
-        
-        # Look for electrode files
-        print("\n=== Looking for electrode files ===")
-        electrode_files = list(data_path.rglob("*electrode*.tsv"))
-        if electrode_files:
-            print(f"Found {len(electrode_files)} electrode file(s):")
-            for f in electrode_files:
-                print(f"  {f.relative_to(data_path)}")
-                # Show first few lines
-                print(f"    First few lines:")
-                df = pd.read_csv(f, sep='\t', nrows=3)
-                print(f"    Columns: {list(df.columns)}")
-        else:
-            print("No electrode files found with pattern '*electrode*.tsv'")
-        
-        # Check for coordinate files in different locations
-        print("\n=== Checking for any .tsv files with coordinates ===")
-        all_tsv = list(data_path.rglob("*.tsv"))
-        print(f"Total .tsv files found: {len(all_tsv)}")
-        for tsv in all_tsv[:10]:  # Show first 10
-            print(f"  {tsv.relative_to(data_path)}")
+    # Load MNI template
+    mni_img = datasets.load_mni152_template()
+    
+    # Use electrode centroid for cut coordinates
+    cut_coords = coords.mean(axis=0).tolist()
+    
+    # Create plot
+    display = plotting.plot_anat(
+        mni_img,
+        cut_coords=cut_coords,
+        display_mode='ortho',
+        title=f'Subject {subject_id} iEEG Electrodes (N={len(coords)})',
+        dim=-0.5  # Dim the background
+    )
+    
+    # Add electrodes
+    display.add_markers(
+        coords.tolist(),
+        marker_color='red',
+        marker_size=120
+    )
+    
+    if output_file:
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    
+    plt.show()
 
 
-# Main execution
+def plot_mosaic_view(all_electrodes, subject_labels):
+    """
+    Create a glass brain view showing all electrodes.
+    """
+    unique_subjects = list(set(subject_labels))
+    subject_to_value = {subj: i for i, subj in enumerate(unique_subjects)}
+    node_values = np.array([subject_to_value[label] for label in subject_labels])
+    
+    # Create a mosaic-style view using glass brain
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    
+    # Axial view
+    display1 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=20,
+        node_cmap='tab20',
+        display_mode='z',
+        colorbar=True,
+        title='Axial View',
+        axes=axes[0, 0]
+    )
+    
+    # Sagittal view
+    display2 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=20,
+        node_cmap='tab20',
+        display_mode='x',
+        colorbar=False,
+        title='Sagittal View',
+        axes=axes[0, 1]
+    )
+    
+    # Coronal view
+    display3 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=20,
+        node_cmap='tab20',
+        display_mode='y',
+        colorbar=False,
+        title='Coronal View',
+        axes=axes[1, 0]
+    )
+    
+    # 3D-like orthogonal view
+    display4 = plotting.plot_markers(
+        node_values=node_values,
+        node_coords=all_electrodes,
+        node_size=20,
+        node_cmap='tab20',
+        display_mode='ortho',
+        colorbar=False,
+        title='Orthogonal View',
+        axes=axes[1, 1]
+    )
+    
+    plt.tight_layout()
+    plt.show()
+    
+    return display1
+
+
 if __name__ == "__main__":
-    # Set your data directory path
     data_dir = "/Users/amritakohli/Downloads/ieeg_ieds_bids"
     
-    # First, explore the dataset structure
-    print("=== EXPLORING DATASET STRUCTURE ===\n")
-    explore_dataset_structure(data_dir)
-    
-    print("\n\n=== ATTEMPTING TO LOAD ELECTRODE DATA ===\n")
-    
-    # Load all electrodes
-    print("Loading electrode data for all subjects...")
-    all_electrodes, subject_labels, subject_ids = load_all_subjects_electrodes(data_dir)
+    print("Loading electrode data...")
+    all_electrodes, subject_labels = load_all_subjects_electrodes(data_dir)
     
     if all_electrodes is not None:
         print(f"\nTotal subjects: {len(set(subject_labels))}")
         print(f"Total electrodes: {len(all_electrodes)}")
-        print(f"Coordinate range - X: [{all_electrodes[:, 0].min():.1f}, {all_electrodes[:, 0].max():.1f}]")
-        print(f"                   Y: [{all_electrodes[:, 1].min():.1f}, {all_electrodes[:, 1].max():.1f}]")
-        print(f"                   Z: [{all_electrodes[:, 2].min():.1f}, {all_electrodes[:, 2].max():.1f}]")
         
-        # Plot electrodes
-        plot_electrodes_on_brain(all_electrodes, subject_labels, 
-                                electrode_size=2.0, opacity=0.5, 
-                                color_by_subject=True)
+        # Create comprehensive plot
+        create_comprehensive_plot(all_electrodes, subject_labels)
+        
+        # Create mosaic view
+        plot_mosaic_view(all_electrodes, subject_labels)
+        
+        # Plot first subject individually (example)
+        first_subject = list(set(subject_labels))[0]
+        print(f"\nPlotting single subject: {first_subject}")
+        plot_single_subject_on_slices(data_dir, first_subject, 
+                                      f'subject_{first_subject}_electrodes.png')
     else:
-        print("\nFailed to load electrode data.")
-        print("Please check the output above to understand the dataset structure.")
+        print("Failed to load electrode data.")
