@@ -39,7 +39,7 @@ def setup_dataset(file_id, data_dir):
     # Check if data already exists
     if extracted_folder.exists():
         print(f"Dataset already available {data_dir}")
-        return
+        return extracted_folder
 
     # Download ZIP if missing
     if not zip_path.exists():
@@ -52,3 +52,4 @@ def setup_dataset(file_id, data_dir):
     delete_zip(zip_path)
 
     print(f"Dataset extracted at {data_dir}")
+    return extracted_folder
