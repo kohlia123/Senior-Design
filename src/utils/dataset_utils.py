@@ -32,13 +32,13 @@ def delete_zip(zip_path):
         print(f"Deleted ZIP.")
 
 
-def setup_dataset(file_id, data_dir):
-    extracted_folder = data_dir / "ieeg_ieds_bids"
-    zip_path = data_dir / "ieeg_ieds_bids_final.zip"
+def setup_dataset(file_id, project_root):
+    extracted_folder = project_root / "ieeg_ieds_bids"
+    zip_path = project_root / "ieeg_ieds_bids_final.zip"
 
     # Check if data already exists
     if extracted_folder.exists():
-        print(f"Dataset already available {data_dir}")
+        print(f"Dataset already available {project_root}")
         return extracted_folder
 
     # Download ZIP if missing
@@ -46,10 +46,10 @@ def setup_dataset(file_id, data_dir):
         download_data(file_id, zip_path)
 
     # Extract ZIP directly into /data/
-    extract_zip_into_data(zip_path, data_dir)
+    extract_zip_into_data(zip_path, project_root)
 
     # Delete ZIP
     delete_zip(zip_path)
 
-    print(f"Dataset extracted at {data_dir}")
+    print(f"Dataset extracted at {project_root}")
     return extracted_folder

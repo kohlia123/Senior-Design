@@ -16,10 +16,8 @@ N_SUB = 25
 
 # Directories
 PROJECT_ROOT = Path(__file__).resolve().parent.parent  # assumes this config.py is inside src/
-DATA_DIR = PROJECT_ROOT / "data"
-DATA_DIR.mkdir(exist_ok=True)
 RES_DIR = PROJECT_ROOT / "results"
 RES_DIR.mkdir(exist_ok=True)
 
 # Download data
-IEEG_DIR = setup_dataset(FILE_ID, DATA_DIR)
+DATA_DIR = setup_dataset(FILE_ID, PROJECT_ROOT)
