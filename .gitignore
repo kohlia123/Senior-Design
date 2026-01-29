@@ -1,0 +1,35 @@
+cat <<EOF > .gitignore
+# macOS system files
+.DS_Store
+
+# Python environment and cache
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Data Files (Crucial for iEEG/EDF data)
+# We ignore these because they are usually too large for GitHub
+data/
+*.mat
+*.edf
+*.npy
+*.npz
+*.csv
+
+# Model Weights
+# Don't upload large trained model files
+models/
+*.pth
+*.h5
+*.pkl
+
+# IDE settings
+.vscode/
+.idea/
+EOF
