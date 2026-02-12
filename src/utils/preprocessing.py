@@ -1,10 +1,9 @@
 import numpy as np
 import pandas as pd
-import antropy as ant
 import scipy.stats as sp_stats
 import mne
 from mne_bids import BIDSPath, read_raw_bids
-from mne_features.feature_extraction import extract_features
+from src.feature_extraction import get_ptp_amplitude
 from pathlib import Path
 
 
@@ -43,25 +42,14 @@ def extract_epochs_features(epochs, subj, sr):
     """
     Extract features from the epochs of a single channel
     """
-    mobility, complexity = ant.hjorth_params(epochs, axis=1)
     feat = {
         'subj': np.full(len(epochs), subj),
         'epoch_id': np.arange(len(epochs)),
-        'kurtosis': sp_stats.kurtosis(epochs, axis=1),
-        'hjorth_mobility': mobility,
-        'hjorth_complexity': complexity,
-        'ptp_amp': np.ptp(epochs, axis=1),
-        'samp_entropy': np.apply_along_axis(ant.sample_entropy, axis=1, arr=epochs)
+        'ptp_amp': get_ptp_amplitude(epochs),
     }
-
-    # Extract teager-kaiser energy
-    X_new = extract_features(np.array(epochs)[:, np.newaxis, :], sr, ['teager_kaiser_energy'], return_as_df=True)
-    # rename columns
-    X_new.columns = [name[0] + '_' + name[1].replace('ch0_', '') for name in X_new.columns]
 
     # Convert to dataframe
     feat = pd.DataFrame(feat)
-    feat = pd.concat([feat, X_new], axis=1)
 
     return feat
 
@@ -97,7 +85,6 @@ def get_subj_data(subj):
         chan_feat = {
             'chan_name': chan,
             'chan_ptp': np.ptp(chan_norm),
-            'chan_kurt': sp_stats.kurtosis(chan_norm),
         }
 
         for feat in chan_feat.keys():

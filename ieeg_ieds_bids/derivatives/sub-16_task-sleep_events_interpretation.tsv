@@ -1,0 +1,29 @@
+time_in_sec	annotation	chans
+0.71075	rt mesial hippo	RMH1 RMH2
+1.04825	rt mesial parahippocampal	RPHG1 RPHG2 RPHG3
+2.19375	rt mesial parahippo	RPHG1 RPHG2 RPHG3
+4.8715	broad rmhippo and parahippo	RMH1 RMH2 RMH3 RMH4 RMH5 RMH6 RMH7 RPHG1 RPHG2 RPHG3 RPHG4 RPHG5 RPHG6 RPHG7
+6.50625	rt mesial parahippo	RPHG1 RPHG2 RPHG3
+11.78375	rt mesial phg	RPHG1 RPHG2
+12.4985	rt mesial phg	RPHG1 RPHG2
+14.12525	rt mesial hippo plus parahippo	RMH1 RMH2 RPHG1 RPHG2
+14.8335	rt mesial hippo plus parahippo	RMH1 RMH2 RPHG1 RPHG2
+17.39325	rt mesial hippo and para	RMH1 RMH2 RPHG1 RPHG2
+20.13175	rt mesial para	RPHG1 RPHG2
+25.4835	broad bisynchrous	RMH1 RMH2 RMH3 RMH4 RMH5
+29.11425	broad bisynch	LOF1 LOF2 LOF3 LOF4 LOF5 RAF1 RAF2 RAF3 RLI1 RLI2 ROF5 RPSMA1 RPSMA2 RPSMA3 RPSMA4 RPSMA5 RPSMA6 RPSMA7
+34.22675	rt mesial para	RPHG1 RPHG2 RPHG3
+35.63575	rt mesial phg	RPHG1 RPHG2 RPHG3
+39.29125	rt mesial phg	RPHG1 RPHG2
+43.46075	rt mesial hippo	RMH1 RMH2 RPHG1
+44.18175	rt mesial	RMH1 RMH2 RMH3 RMH4 RMH5 RMH6 RMH7
+46.74825	rt ant frontal plus rt mesial	RPHG1 RPHG2 RPSMA1 RPSMA2
+49.91575	rt mesial hippo plus para	RMH1 RMH2 RPHG1 RPHG2 RPHG3
+51.50475	rt mesial hippo	RMH1 RMH2
+53.81975	rt para	RPHG1 RPHG2
+55.31475	rt phg mesial	RPHG1
+58.834	rt mesial temporal phg rmh	RMH1 RMH2 RMH3 RPHG1 RPHG2 RPHG3
+63.454	rt mesial temp	RMH1 RMH2 RPHG1
+64.75425	broad	RMH1 RMH2 RPHG1 RPHG2 RPHG3
+68.362	rmh mesial	RMH1
+79.724	lat rba	RBAA1 RMH1 RMH2

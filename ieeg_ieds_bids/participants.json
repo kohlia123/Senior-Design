@@ -1,0 +1,31 @@
+{
+    "participant_id": {
+        "Description": "Unique participant identifier"
+    },
+    "age": {
+        "Description": "Age of the participant at time of testing",
+        "Units": "years"
+    },
+    "sex": {
+        "Description": "Biological sex of the participant",
+        "Levels": {
+            "F": "female",
+            "M": "male"
+        }
+    },
+    "descriptive_SOZ": {
+        "Description": "Seizure Onset Zone of the participant"
+    },
+    "SOZ_laterality": {
+        "Description": "Seizure Onset Zone hemisphere. R for right, L for left"
+    },
+    "SOZ_region": {
+        "Description": "Seizure Onset Zone lobe (eg. temporal, frontal) or region (eg. insula)"
+    },
+    "TimeFromSleepOnset": {
+        "Description": "Time from sleep onset in minutes"
+    },
+    "SleepScoring": {
+        "Description": "Sleep stages according to AASM criteria in 30s epochs"
+    }
+}

@@ -1,0 +1,19 @@
+{
+    "TaskName": "sleep",
+    "InstitutionName": "Tel Aviv Sourasky Medical Center",
+    "Manufacturer": "n/a",
+    "PowerLineFrequency": 50.0,
+    "SamplingFrequency": 1000.0,
+    "SoftwareFilters": "n/a",
+    "RecordingDuration": 179.999,
+    "RecordingType": "continuous",
+    "iEEGReference": "scalp",
+    "ECOGChannelCount": 0,
+    "SEEGChannelCount": 27,
+    "EEGChannelCount": 0,
+    "EOGChannelCount": 0,
+    "ECGChannelCount": 0,
+    "EMGChannelCount": 0,
+    "MiscChannelCount": 0,
+    "TriggerChannelCount": 0
+}
