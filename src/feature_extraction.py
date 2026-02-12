@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.stats as sp_stats
 
-
+# Sharpness
 def feat_sharpness(epoch_1ch: np.ndarray, sfreq: float, window_ms: float = 5.0) -> float:
     x = np.asarray(epoch_1ch, dtype=float)
     n = x.size
@@ -23,7 +23,7 @@ def feat_sharpness(epoch_1ch: np.ndarray, sfreq: float, window_ms: float = 5.0) 
     slope_right = abs((x[right_idx] - x[peak_idx]) / dt_right)
 
     return 0.5 * (slope_left + slope_right)
-  
+# Duration 
 def ied_duration_ms(epoch: np.ndarray,
                     sfreq: float,
                     onset_idx: int,
@@ -72,6 +72,6 @@ def ied_duration_ms(epoch: np.ndarray,
 
     dur_ms = 1000.0 * dur_samples / float(sfreq)
     return dur_ms if dur_ms >= float(min_ms) else 0.0
-
+# Amplitude
 def get_ptp_amplitude(epochs):
     return np.ptp(epochs, axis=1)
