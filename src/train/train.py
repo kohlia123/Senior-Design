@@ -1,6 +1,9 @@
 # train.py
 import numpy as np
 import pandas as pd
+from imblearn.under_sampling import RandomUnderSampler
+from sklearn.model_selection import train_test_split
+from src.utils.preprocessing import get_subj_data
 
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import (
@@ -48,18 +51,29 @@ def run_kfold(X, y, n_splits=5, random_state=15):
     }
 
     kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    
+    # Initialize the sampler
+    rus = RandomUnderSampler(random_state=random_state)
 
     for train_index, test_index in kf.split(X, y):
         model = LGBMClassifier(random_state=random_state)
 
-        X_train, X_test = X.iloc[train_index], X.iloc[test_index]
-        y_train, y_test = y[train_index], y[test_index]
+        # 1. Split data as usual
+        X_train_raw, X_test = X.iloc[train_index], X.iloc[test_index]
+        y_train_raw, y_test = y[train_index], y[test_index]
 
+        # 2. Apply Undersampling ONLY to the training fold
+        # This prevents "data leakage" and keeps the test set realistic
+        X_train, y_train = rus.fit_resample(X_train_raw, y_train_raw)
+
+        # 3. Fit the model on balanced data
         model.fit(X_train, y_train)
 
+        # 4. Predict on the UNBALANCED test set
         y_pred = model.predict(X_test)
         y_score = model.predict_proba(X_test)[:, 1]
 
+        # ... existing metrics logic ...
         metrics["accuracy"].append(accuracy_score(y_test, y_pred))
         metrics["precision"].append(precision_score(y_test, y_pred, zero_division=0))
         metrics["sensitivity"].append(recall_score(y_test, y_pred, zero_division=0))
@@ -68,7 +82,6 @@ def run_kfold(X, y, n_splits=5, random_state=15):
         tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
         metrics["specificity"].append(tn / (tn + fp) if (tn + fp) else 0.0)
 
-        # AUCs (safe in case a fold somehow has 1 class)
         if len(np.unique(y_test)) == 2:
             metrics["ROCAUC"].append(roc_auc_score(y_test, y_score))
             metrics["PRAUC"].append(average_precision_score(y_test, y_score))
