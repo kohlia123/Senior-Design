@@ -3,19 +3,15 @@ import pandas as pd
 import scipy.stats as sp_stats
 import mne
 from mne_bids import BIDSPath, read_raw_bids
-from src.feature_extraction import get_ptp_amplitude
 from pathlib import Path
-
+from src.feature_extraction import feat_sharpness, ied_duration_ms, get_ptp_amplitude
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BIDS_ROOT = PROJECT_ROOT / "ieeg_ieds_bids"
 
 
 def onset_per_chan(subj):
-    """
-    Create a dictionary with the onsets of each channel
-    """
-    # load the list of channels for each annotation
+    """Create a dictionary with the onsets of each channel"""
     events_interp_path = (
             BIDS_ROOT
             / "derivatives"
@@ -24,7 +20,6 @@ def onset_per_chan(subj):
     tags_df = pd.read_csv(events_interp_path, sep="\t")
     result_dict = {}
 
-    # Iterate over the DataFrame rows
     for _, row in tags_df.iterrows():
         onset = row['time_in_sec']
         chans = row['chans']
@@ -33,65 +28,83 @@ def onset_per_chan(subj):
                 result_dict[string] = []
             result_dict[string].append(onset)
 
-    # in case of extra space
     result_dict.pop('', None)
     return result_dict
 
-
 def extract_epochs_features(epochs, subj, sr):
     """
-    Extract features from the epochs of a single channel
+    Extract ONLY the 3 custom features: Sharpness, Duration, and PTP Amplitude.
     """
-    feat = {
+    epochs_np = np.array(epochs)
+    
+    # 1. Initialize lists for single-epoch calculations
+    sharpness_vals = []
+    duration_vals = []
+    
+    for epoch in epochs_np:
+        # Sharpness calculation
+        sharp = feat_sharpness(epoch, sr)
+        sharpness_vals.append(sharp)
+        
+        # Duration calculation (midpoint used as the search anchor)
+        mid_idx = len(epoch) // 2
+        dur = ied_duration_ms(epoch, sr, onset_idx=mid_idx)
+        duration_vals.append(dur)
+
+    # 2. Build the final feature dataframe
+    feat = pd.DataFrame({
         'subj': np.full(len(epochs), subj),
         'epoch_id': np.arange(len(epochs)),
-        'ptp_amp': get_ptp_amplitude(epochs),
-    }
-
-    # Convert to dataframe
-    feat = pd.DataFrame(feat)
+        # Feature 1: Amplitude
+        'ptp_amp': get_ptp_amplitude(epochs_np), 
+        # Feature 2: Sharpness
+        'sharpness': sharpness_vals,
+        # Feature 3: Duration
+        'ied_duration': duration_vals
+    })
 
     return feat
 
-
 def get_subj_data(subj):
-    """
-    Get features and labels of a single subject (all channels)
-    """
-    window_size = 250  # ms
-    raw = read_raw_bids(BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'))
+    """Get features and labels of a single subject (all channels)"""
+    window_size_ms = 250  
+    raw = read_raw_bids(BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'), verbose=False)
     chans_onsets = onset_per_chan(subj)
+    sfreq = raw.info['sfreq']
 
     y = []
     x = pd.DataFrame()
-    # iterate over all channels that have annotations
+    
     for chan in chans_onsets.keys():
         epochs = []
+        # Get raw data for the specific channel
         chan_raw = raw.copy().pick([chan]).get_data().flatten()
-        # normalize chan
+        
+        # Standardize the channel signal (Z-score)
         chan_norm = (chan_raw - chan_raw.mean()) / chan_raw.std()
-        # run on all 250ms epochs excluding the last 1s
-        for i in range(0, len(chan_norm) - 4 * window_size, window_size):
-            epochs.append(chan_norm[i: i + window_size])
+        
+        # Calculate window size in samples based on sfreq
+        window_samples = int((window_size_ms / 1000.0) * sfreq)
+        
+        # Split into 250ms chunks
+        for i in range(0, len(chan_norm) - window_samples, window_samples):
+            epochs.append(chan_norm[i: i + window_samples])
 
-        # mark the spikes in the right index
+        # Labeling: 1 if an IED onset falls within this 250ms window
         curr_y = [0] * len(epochs)
+        window_sec = window_size_ms / 1000.0
         for onset in chans_onsets[chan]:
-            curr_y[int(onset // 0.25)] = 1
+            idx = int(onset // window_sec)
+            if idx < len(curr_y):
+                curr_y[idx] = 1
 
-        # add epoch-level features
-        curr_feat = extract_epochs_features(epochs, subj, raw.info['sfreq'])
-        # add channel-level features
-        chan_feat = {
-            'chan_name': chan,
-            'chan_ptp': np.ptp(chan_norm),
-        }
-
-        for feat in chan_feat.keys():
-            curr_feat[feat] = chan_feat[feat]
-
-        # save the epochs as column for debugging/visualization
-        curr_feat['epoch'] = epochs
+        # Extract only our custom features
+        curr_feat = extract_epochs_features(epochs, subj, sfreq)
+        
+        # Add metadata for tracking/debugging
+        curr_feat['chan_name'] = chan
+        curr_feat['epoch'] = epochs # Keeping this for build_dataset to drop later
+        
         x = pd.concat([x, curr_feat], axis=0)
         y.extend(curr_y)
 

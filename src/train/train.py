@@ -26,9 +26,11 @@ def build_dataset(subjects):
         print(f"Loading sub-{subj} ...")
         X_subj, y_subj = get_subj_data(subj)
 
-        # Drop non-numeric / debug columns that can't go into the model
-        if "epoch" in X_subj.columns:
-            X_subj = X_subj.drop(columns=["epoch"])
+        # UPDATED: Drop ALL non-numeric/metadata columns
+        cols_to_drop = ["epoch", "epoch_id"]
+        for col in cols_to_drop:
+            if col in X_subj.columns:
+                X_subj = X_subj.drop(columns=[col])
 
         X_all.append(X_subj)
         y_all.extend(y_subj)
@@ -36,7 +38,13 @@ def build_dataset(subjects):
     X = pd.concat(X_all, axis=0, ignore_index=True)
     y = np.asarray(y_all, dtype=int)
 
-    # LightGBM can use pandas categorical features
+    # Handle potential NaNs from custom feature logic
+    # sharpness returns NaN if peaks are at the very edge of the window
+    if X.isnull().values.any():
+        print("Found NaNs in features. Filling with 0...")
+        X = X.fillna(0)
+
+    # LightGBM categorical handling
     for c in ["subj", "chan_name"]:
         if c in X.columns:
             X[c] = X[c].astype("category")
