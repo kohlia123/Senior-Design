@@ -1,0 +1,15 @@
+{
+    "onset": {
+        "Description": "The event onset time in seconds."
+    },
+    "trial_type": {
+        "Description": "Expert annotation on the timing and location of the event, as determined through clinical assessment",
+	"Levels": {
+		"hippo": "hippocampus",
+		"ant": "anterior"
+	}
+    },
+    "sample": {
+        "Description": "The event onset time in number of sampling points."
+    }
+}

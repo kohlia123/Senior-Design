@@ -1,0 +1,26 @@
+participant_id	age	sex	descriptive_SOZ	SOZ_laterality	SOZ_region	SOZ	TimeFromSleepOnset	SleepScoring
+sub-01	35	M		Right	Temporal + insula	right temporal pole + anterior insula	59.0	N1,N1,N1,N1,N1,N1
+sub-02	39	M		Bilateral	Temporal + insula	Right temporal and Left insula	13.0	N2,N2,N2,N2,N2,N2
+sub-03	29	M		Right	Frontal	Right frontal	25	N2,N2,N2,N2,N2,N2
+sub-04	17	M		Right	Temporal	Right superior temporal Gyrus	13	N1,N1,N1,N2,N2,N2
+sub-05	46	F		Bilateral	Temporal	Bilateral temporal	106	N2,N2,N2,N2,N2,N2
+sub-06	28	M		Left	Parietal	Left posterior cingulate	110	N2,N2,N2,N2,N2,N2
+sub-07	42	M		Left	Insula	Left anterior insula	2	N1,N1,N1,N2,N2,N2
+sub-08	25	F		Bilateral	Temporal	Bilateral temporal		N2,N2,N2,N2,N2,N2
+sub-09	28	F		Left	Temporal + insula	Left mesial temporal and left posterior insula		N2,R,N2,N2,R,R
+sub-10	27	M		Left	Temporal	Left temporal	15	N2,N2,N2,N2,N2,N2,N2
+sub-11	41	F		Bilateral	Temporal	Left temporal spreading to right entorhinal cortex	5	N1,N1,N2,N2,N2,N2,N2
+sub-12	25	F		Bilateral	Temporal	Bilateral medial temporal lobe	5	N2,N2,N2,N2,N2,N3,N2,N3
+sub-13	33	F		Left	Temporal	Left medial temporal lobe	105	N1,N1,N2,N2,N2,N2,N2
+sub-14	39	M		Left	Temporal	Left medial temporal lobe	40	N2,N2,N2,N2,N2,N2,N2
+sub-15	26	M		Bilateral	Fronto-temporal	Bilateral medial temporal lobe and right inferior frontal gyrus	126	N3,N3,N2,N2,N3,N3,N3
+sub-16	23	F		Right	Fronto-temporal	Broad right frontotemporal onset	49.0	
+sub-17	33	F		Left	Temporal	Left mesial temporal lobe	11.0	
+sub-18	47	F		Left	Temporal	Left inferior temporal gyrus	115.0	
+sub-19	36	M		Right	Temporo-occipital	R temporo-occipital	27.0	
+sub-20	34	F		Bilateral	Temporal	Bilateral temporal	14.0	
+sub-21	29	F		Bilateral	Temporal	Bilateral temporal (R>L)	32.0	
+sub-22	44	M		Right	Fronto-parietal + insula	Broad Right frontal and parietal lobes, and Right insula	2.0	
+sub-23	32	M		Bilateral	Temporal	Bilateral mesial temporal lobe		
+sub-24	22	F		Left	Temporal	Mesial Left superior temporal gyrus, mesial Left heschl's gyrus	54.0	
+sub-25	19	M		Left	Frontal	Left frontal (heterotopia)	1.0	
