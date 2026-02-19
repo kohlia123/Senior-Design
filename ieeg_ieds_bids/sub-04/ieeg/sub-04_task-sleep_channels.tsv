@@ -1,0 +1,9 @@
+name	type	units	low_cutoff	high_cutoff	sampling_frequency	side	soz_region
+LA1	SEEG	µV	0.0	500.0	1000.0	L	0
+LA2	SEEG	µV	0.0	500.0	1000.0	L	0
+LA3	SEEG	µV	0.0	500.0	1000.0	L	0
+RA3	SEEG	µV	0.0	500.0	1000.0	R	1
+LA1-LA2	SEEG	µV	0.0	500.0	1000.0	L	0
+LA2-LA3	SEEG	µV	0.0	500.0	1000.0	L	0
+LA3-LA4	SEEG	µV	0.0	500.0	1000.0	L	0
+RA3-RA4	SEEG	µV	0.0	500.0	1000.0	R	1

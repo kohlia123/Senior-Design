@@ -1,0 +1,22 @@
+{
+    "Name": "Depth IEDs",
+    "BIDSVersion": "1.7.0",
+    "DatasetType": "raw",
+    "License": "CC-BY-NC",
+    "Authors": [
+        "Rotem Falach",
+        "Maya Geva-Sagiv",
+        "Dawn Eliashiv",
+        "Lilach Goldstein",
+        "Ofer Budin",
+        "Guy Gurevich",
+        "Genela Morris",
+        "Ido Strauss",
+        "Amir Globerson",
+        "Firas Fahoum",
+        "Itzhak Fried",
+        "Yuval Nir"
+    ],
+    "ReferencesAndLinks": ["https://doi.org/10.1038/s41597-024-04187-y", "https://doi.org/10.6084/m9.figshare.26131978"],
+    "DatasetDOI": "10.6084/m9.figshare.26131978"
+}
