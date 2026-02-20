@@ -141,7 +141,7 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
 
 if __name__ == "__main__":
     # Load list of subjects (e.g., ['01', '02', ...])
-    subjects = [f"{i:02d}" for i in range(1, N_SUB + 1)]
+    subjects = [f"{i:02d}" for i in range(2, N_SUB + 1)]
     
     # Build dataset
     X_feat, y = build_dataset(subjects)
