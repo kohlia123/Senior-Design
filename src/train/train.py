@@ -1,110 +1,150 @@
-# train.py
 import numpy as np
 import pandas as pd
-from imblearn.under_sampling import RandomUnderSampler
-from sklearn.model_selection import train_test_split
-from src.utils.preprocessing import get_subj_data
+import matplotlib.pyplot as plt
+import shap
+import joblib
+import os
+import time
 
-from sklearn.model_selection import StratifiedKFold
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import StratifiedGroupKFold
+from imblearn.under_sampling import RandomUnderSampler
+from joblib import Parallel, delayed
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, roc_auc_score, average_precision_score
 )
 
-from lightgbm import LGBMClassifier
-
-# adjust import path to wherever your preprocessing.py lives
+# Internal imports
 from src.utils.preprocessing import get_subj_data
 from src.config import N_SUB
 
-
 def build_dataset(subjects):
-    X_all = []
-    y_all = []
-
-    for subj in subjects:
-        print(f"Loading sub-{subj} ...")
-        X_subj, y_subj = get_subj_data(subj)
-
-        # UPDATED: Drop ALL non-numeric/metadata columns
-        cols_to_drop = ["epoch", "epoch_id"]
-        for col in cols_to_drop:
-            if col in X_subj.columns:
-                X_subj = X_subj.drop(columns=[col])
-
-        X_all.append(X_subj)
-        y_all.extend(y_subj)
-
+    # This runs get_subj_data for multiple subjects in parallel
+    results = Parallel(n_jobs=-1)(delayed(get_subj_data)(s) for s in subjects)
+    
+    X_all = [res[0] for res in results]
+    y_all = [y for res in results for y in res[1]]
+    
     X = pd.concat(X_all, axis=0, ignore_index=True)
     y = np.asarray(y_all, dtype=int)
-
-    # Handle potential NaNs from custom feature logic
-    # sharpness returns NaN if peaks are at the very edge of the window
-    if X.isnull().values.any():
-        print("Found NaNs in features. Filling with 0...")
-        X = X.fillna(0)
-
-    # LightGBM categorical handling
-    for c in ["subj", "chan_name"]:
-        if c in X.columns:
-            X[c] = X[c].astype("category")
-
     return X, y
 
-
-def run_kfold(X, y, n_splits=5, random_state=15):
+def run_training_pipeline(X, y, n_splits=5, random_state=15):
     metrics = {
         "accuracy": [], "precision": [], "sensitivity": [], "specificity": [],
-        "f1": [], "ROCAUC": [], "PRAUC": []
+        "f1": [], "ROCAUC": [], "PRAUC": [], "train_time_s": []
     }
 
-    kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    
-    # Initialize the sampler
+    groups = X['subj']
+    kf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     rus = RandomUnderSampler(random_state=random_state)
 
-    for train_index, test_index in kf.split(X, y):
-        model = LGBMClassifier(random_state=random_state)
+    all_shap_values = []
+    all_test_features = []
+    
+    feature_cols = [c for c in X.columns if c not in ['subj', 'chan_name', 'epoch', 'epoch_id']]
 
-        # 1. Split data as usual
-        X_train_raw, X_test = X.iloc[train_index], X.iloc[test_index]
-        y_train_raw, y_test = y[train_index], y[test_index]
+    for fold, (train_index, test_index) in enumerate(kf.split(X, y, groups=groups)):
+        print(f"--- Processing Fold {fold + 1} ---")
+        try:
+            X_train_raw = X.iloc[train_index][feature_cols]
+            X_test_raw = X.iloc[test_index][feature_cols]
+            y_train_raw, y_test = y[train_index], y[test_index]
 
-        # 2. Apply Undersampling ONLY to the training fold
-        # This prevents "data leakage" and keeps the test set realistic
-        X_train, y_train = rus.fit_resample(X_train_raw, y_train_raw)
+            X_train, y_train = rus.fit_resample(X_train_raw, y_train_raw)
 
-        # 3. Fit the model on balanced data
-        model.fit(X_train, y_train)
+            # add class_weight='balanced'
+            model = RandomForestClassifier(
+                n_estimators=100,
+                class_weight='balanced',
+                n_jobs=-1,
+                random_state=random_state
+            )
+            start = time.time()
+            model.fit(X_train, y_train)
+            train_time = time.time() - start
+            print(f"  Fold {fold + 1} training time: {train_time:.2f}s")
 
-        # 4. Predict on the UNBALANCED test set
-        y_pred = model.predict(X_test)
-        y_score = model.predict_proba(X_test)[:, 1]
+            y_score = model.predict_proba(X_test_raw)[:, 1]
 
-        # ... existing metrics logic ...
-        metrics["accuracy"].append(accuracy_score(y_test, y_pred))
-        metrics["precision"].append(precision_score(y_test, y_pred, zero_division=0))
-        metrics["sensitivity"].append(recall_score(y_test, y_pred, zero_division=0))
-        metrics["f1"].append(f1_score(y_test, y_pred, zero_division=0))
+            # find best threshold using precision-recall curve
+            from sklearn.metrics import precision_recall_curve
+            precision_curve, recall_curve, thresholds = precision_recall_curve(y_train_raw, 
+                                                        model.predict_proba(X_train_raw)[:, 1])
+            f1_scores = 2 * (precision_curve * recall_curve) / (precision_curve + recall_curve + 1e-9)
+            best_thresh = thresholds[np.argmax(f1_scores[:-1])]  # thresholds is 1 shorter than p/r
+            print(f"  Best threshold for fold {fold + 1}: {best_thresh:.3f}")
 
-        tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
-        metrics["specificity"].append(tn / (tn + fp) if (tn + fp) else 0.0)
+            # use best threshold instead of default 0.5
+            y_pred = (y_score >= best_thresh).astype(int)
 
-        if len(np.unique(y_test)) == 2:
-            metrics["ROCAUC"].append(roc_auc_score(y_test, y_score))
-            metrics["PRAUC"].append(average_precision_score(y_test, y_score))
-        else:
-            metrics["ROCAUC"].append(np.nan)
-            metrics["PRAUC"].append(np.nan)
+            # Metrics 
+            metrics["accuracy"].append(accuracy_score(y_test, y_pred))
+            metrics["precision"].append(precision_score(y_test, y_pred, zero_division=0))
+            metrics["sensitivity"].append(recall_score(y_test, y_pred, zero_division=0))
+            metrics["f1"].append(f1_score(y_test, y_pred, zero_division=0))
+            metrics["train_time_s"].append(train_time)
 
+            tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
+            metrics["specificity"].append(tn / (tn + fp) if (tn + fp) else 0.0)
+            
+            if len(np.unique(y_test)) == 2:
+                metrics["ROCAUC"].append(roc_auc_score(y_test, y_score))
+                metrics["PRAUC"].append(average_precision_score(y_test, y_score))
+
+            # SHAP 
+            explainer = shap.TreeExplainer(model)
+            X_test_sample = X_test_raw.sample(min(len(X_test_raw), 100), random_state=random_state)
+            shap_v = explainer.shap_values(X_test_sample)
+            print(f"  SHAP type: {type(shap_v)}, shape: {np.array(shap_v).shape}")
+            if isinstance(shap_v, list):
+                all_shap_values.append(shap_v[1])
+            else:
+                all_shap_values.append(shap_v[:, :, 1])
+            all_test_features.append(X_test_sample)
+            print(f"  Fold {fold + 1} complete. SHAP samples collected: {len(X_test_sample)}")
+
+        except Exception as e:
+            print(f"  Fold {fold + 1} FAILED with error: {e}")
+            raise
+
+    # Summary (unchanged)
     results = pd.DataFrame(metrics)
     results.loc["mean"] = results.mean(numeric_only=True)
+    print("\nFinal Results Table:")
+    print(results)
+
+    print("\nGenerating SHAP Feature Importance Plot...")
+    print(f"Folds completed: {len(all_test_features)}")
+
+    if len(all_test_features) == 0:
+        print("ERROR: No SHAP values were collected. Check fold errors above.")
+        return results
+
+    final_shap = np.vstack(all_shap_values)
+    final_features = pd.concat(all_test_features, ignore_index=True)
+    final_features = final_features[feature_cols]
+
+    print(f"  final_shap shape: {final_shap.shape}")
+    print(f"  final_features shape: {final_features.shape}")
+
+    plt.figure(figsize=(10, 6))
+    shap.summary_plot(final_shap, final_features, plot_type='bar', color='#b0acf7')
+    plt.show()
+
+    os.makedirs("models", exist_ok=True)
+    joblib.dump(model, "models/trained_model.joblib")
+    print("Model saved to models/trained_model.joblib")
+
     return results
 
-
 if __name__ == "__main__":
+    # Load list of subjects (e.g., ['01', '02', ...])
     subjects = [f"{i:02d}" for i in range(1, N_SUB + 1)]
+    
+    # Build dataset
     X_feat, y = build_dataset(subjects)
 
-    results = run_kfold(X_feat, y, n_splits=5, random_state=15)
-    print(results)
+    # Run pipeline
+    run_training_pipeline(X_feat, y)

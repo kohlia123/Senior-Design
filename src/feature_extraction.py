@@ -31,7 +31,7 @@ def _bandpass(x, fs, low, high, order=4):
     nyq = 0.5 * fs
     b, a = butter(order, [low/nyq, high/nyq], btype="band")
     return filtfilt(b, a, x)
-
+# Slow afterwave
 def feat_slow_afterwave(epoch_1ch: np.ndarray,
                         sfreq: float,
                         spike_index: int,
@@ -95,8 +95,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     }
 
     return slow_present, features
-
-
+# Background disruption
 def feat_background_disruption(epoch_1ch: np.ndarray,
                                sfreq: float,
                                spike_index: int,
@@ -145,7 +144,8 @@ def feat_background_disruption(epoch_1ch: np.ndarray,
     background_line_length = np.sum(np.abs(np.diff(pre)))
 
     # frequency-domain
-    f, psd = welch(pre, fs=sfreq, nperseg=len(pre))
+    nperseg = min(len(pre), 256)
+    f, psd = welch(pre, fs=sfreq, nperseg=nperseg)
 
     delta_power = np.mean(psd[(f >= 1) & (f <= 4)])
     alpha_power = np.mean(psd[(f >= 8) & (f <= 13)])

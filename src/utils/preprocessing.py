@@ -1,11 +1,16 @@
 import numpy as np
 import pandas as pd
-import antropy as ant
 import scipy.stats as sp_stats
 import mne
 from mne_bids import BIDSPath, read_raw_bids
 from pathlib import Path
-from src.feature_extraction import feat_sharpness, ied_duration_ms, get_ptp_amplitude
+from src.feature_extraction import (
+    feat_sharpness, 
+    ied_duration_ms, 
+    get_ptp_amplitude, 
+    feat_slow_afterwave,
+    feat_background_disruption
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BIDS_ROOT = PROJECT_ROOT / "ieeg_ieds_bids"
@@ -33,78 +38,96 @@ def onset_per_chan(subj):
     return result_dict
 
 def extract_epochs_features(epochs, subj, sr):
-    """
-    Extract ONLY the 3 custom features: Sharpness, Duration, and PTP Amplitude.
-    """
     epochs_np = np.array(epochs)
+    feats = []
     
-    # 1. Initialize lists for single-epoch calculations
-    sharpness_vals = []
-    duration_vals = []
-    
-    for epoch in epochs_np:
-        # Sharpness calculation
-        sharp = feat_sharpness(epoch, sr)
-        sharpness_vals.append(sharp)
-        
-        # Duration calculation (midpoint used as the search anchor)
+    # Pre-define column names for consistent DataFrame shape
+    slow_wave_cols = ["slow_amplitude", "spike_amplitude", "amplitude_ratio", "latency_ms", "duration_ms"]
+    bg_cols = ["background_rms", "background_std", "background_line_length", 
+               "background_delta_power", "background_alpha_power", "event_rms_ratio_bg"]
+
+    for i, epoch in enumerate(epochs_np):
+        # Anchor all searches at the midpoint (500ms mark)
         mid_idx = len(epoch) // 2
-        dur = ied_duration_ms(epoch, sr, onset_idx=mid_idx)
-        duration_vals.append(dur)
+        
+        # Base metadata and Morphology
+        row = {
+            'subj': subj,
+            'epoch_id': i,
+            'ptp_amp': np.ptp(epoch),
+            'sharpness': feat_sharpness(epoch, sr),
+            'ied_duration': ied_duration_ms(epoch, sr, onset_idx=mid_idx)
+        }
+        
+        # Extract Slow After-wave (returns bool, dict)
+        _, slow_feats = feat_slow_afterwave(epoch, sr, spike_index=mid_idx)
+        if slow_feats:
+            row.update(slow_feats)
+        else:
+            row.update({k: 0.0 for k in slow_wave_cols})
 
-    # 2. Build the final feature dataframe
-    feat = pd.DataFrame({
-        'subj': np.full(len(epochs), subj),
-        'epoch_id': np.arange(len(epochs)),
-        # Feature 1: Amplitude
-        'ptp_amp': get_ptp_amplitude(epochs_np), 
-        # Feature 2: Sharpness
-        'sharpness': sharpness_vals,
-        # Feature 3: Duration
-        'ied_duration': duration_vals
-    })
+        # Extract Background Context (returns dict)
+        bg_feats = feat_background_disruption(epoch, sr, spike_index=mid_idx)
+        if bg_feats:
+            row.update(bg_feats)
+        else:
+            row.update({k: 0.0 for k in bg_cols})
+            
+        feats.append(row)
 
-    return feat
+    # Convert the list of dictionaries into a single DataFrame
+    final_feats = pd.DataFrame(feats)
+    cols_to_fix = [c for c in final_feats.columns if c not in ['subj', 'epoch_id']]
+    final_feats[cols_to_fix] = final_feats[cols_to_fix].apply(pd.to_numeric, errors='coerce').fillna(0.0)
+    
+    return final_feats
 
 def get_subj_data(subj):
-    """Get features and labels of a single subject (all channels)"""
-    window_size_ms = 250  
-    raw = read_raw_bids(BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'), verbose=False)
+    window_size_ms = 1000  
+    stride_ms = 250       
+    
+    # Load raw data - verbose=False prevents terminal flooding
+    raw = read_raw_bids(
+        BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'), 
+        verbose=False
+    )
     chans_onsets = onset_per_chan(subj)
     sfreq = raw.info['sfreq']
 
     y = []
     x = pd.DataFrame()
     
+    window_samples = int((window_size_ms / 1000.0) * sfreq)
+    stride_samples = int((stride_ms / 1000.0) * sfreq)
+
     for chan in chans_onsets.keys():
         epochs = []
-        # Get raw data for the specific channel
-        chan_raw = raw.copy().pick([chan]).get_data().flatten()
         
-        # Standardize the channel signal (Z-score)
+        # 1. Extract and normalize
+        chan_raw = raw.copy().pick([chan]).get_data().flatten()
         chan_norm = (chan_raw - chan_raw.mean()) / chan_raw.std()
         
-        # Calculate window size in samples based on sfreq
-        window_samples = int((window_size_ms / 1000.0) * sfreq)
-        
-        # Split into 250ms chunks
-        for i in range(0, len(chan_norm) - window_samples, window_samples):
-            epochs.append(chan_norm[i: i + window_samples])
+        # 2. Slice the normalized data
+        # Move by 250ms stride, but grab 1000ms windows
+        for i in range(0, len(chan_norm) - window_samples, stride_samples):
+            epochs.append(chan_norm[i : i + window_samples])
 
-        # Labeling: 1 if an IED onset falls within this 250ms window
-        curr_y = [0] * len(epochs)
-        window_sec = window_size_ms / 1000.0
-        for onset in chans_onsets[chan]:
-            idx = int(onset // window_sec)
-            if idx < len(curr_y):
-                curr_y[idx] = 1
+        # 3. Labeling Logic (Overlapping)
+        curr_y = []
+        for i in range(len(epochs)):
+            start_sec = (i * stride_samples) / sfreq
+            end_sec = start_sec + (window_size_ms / 1000.0)
+            
+            # Check if any annotation falls within this 1s window
+            is_spike = any(start_sec <= onset < end_sec for onset in chans_onsets[chan])
+            curr_y.append(1 if is_spike else 0)
 
-        # Extract only our custom features
+        # 4. Extract Features
         curr_feat = extract_epochs_features(epochs, subj, sfreq)
         
-        # Add metadata for tracking/debugging
+        # 5. Metadata
         curr_feat['chan_name'] = chan
-        curr_feat['epoch'] = epochs # Keeping this for build_dataset to drop later
+        curr_feat['epoch'] = epochs 
         
         x = pd.concat([x, curr_feat], axis=0)
         y.extend(curr_y)
