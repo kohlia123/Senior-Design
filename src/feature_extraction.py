@@ -100,9 +100,11 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
 def feat_background_disruption(epoch_1ch: np.ndarray,
                                sfreq: float,
                                spike_index: int,
-                               pre_ms: float = 300.0,
-                               post_ms: float = 300.0,
-                               guard_ms: float = 50.0):
+                               pre_ms: float = 500.0,
+                               post_ms: float = 500.0,
+                               guard_ms: float = 50.0,
+                               prev_epoch: np.ndarray = None,
+                               next_epoch: np.ndarray = None):
 
     x = np.asarray(epoch_1ch, dtype=float)
     n = x.size
@@ -123,6 +125,15 @@ def feat_background_disruption(epoch_1ch: np.ndarray,
     pre_start = max(0, pre_end - pre_len)
     pre = x[pre_start:pre_end]
 
+    # If PRE is too short, borrow from prev_epoch (take from its end)
+    if len(pre) < pre_len and prev_epoch is not None:
+        prev = np.asarray(prev_epoch, dtype=float)
+        prev = prev - np.mean(prev)
+        need = pre_len - len(pre)
+        take = min(len(prev), need)
+        if take > 0:
+            pre = np.concatenate([prev[-take:], pre])
+
     if len(pre) < int(0.05 * sfreq):
         return {}
 
@@ -131,24 +142,39 @@ def feat_background_disruption(epoch_1ch: np.ndarray,
     post_end = min(n, post_start + post_len)
     post = x[post_start:post_end]
 
+     # If POST is too short, borrow from next_epoch (take from its beginning)
+    if len(post) < post_len and next_epoch is not None:
+        nxt = np.asarray(next_epoch, dtype=float)
+        nxt = nxt - np.mean(nxt)
+        need = post_len - len(post)
+        take = min(len(nxt), need)
+        if take > 0:
+            post = np.concatenate([post, nxt[:take]])
+
     event_start = max(0, spike_index - int(0.025 * sfreq))
     event_end = min(n, spike_index + int(0.05 * sfreq))
     event = x[event_start:event_end]
+    if len(event) < 2:
+        return {}
+    
     # time-domain
     background_rms = np.sqrt(np.mean(pre**2))
-    event_rms = np.sqrt(np.mean(event**2))
-
-    eps = 1e-12
-    rms_ratio_event_bg = event_rms / (background_rms + eps)
-
     background_std = np.std(pre)
     background_line_length = np.sum(np.abs(np.diff(pre)))
+
+    eps = 1e-12
+    event_rms = np.sqrt(np.mean(event**2))
+    event_rms_ratio_bg = event_rms / (background_rms + eps)
+
+    post_rms = np.sqrt(np.mean(post**2)) if len(post) >= int(0.05 * sfreq) else np.nan
+    event_rms_ratio_post = event_rms / (post_rms + eps) if np.isfinite(post_rms) else np.nan
+    post_rms_ratio_pre = post_rms / (background_rms + eps) if np.isfinite(post_rms) else np.nan
 
     # frequency-domain
     f, psd = welch(pre, fs=sfreq, nperseg=len(pre))
 
-    delta_power = np.mean(psd[(f >= 1) & (f <= 4)])
-    alpha_power = np.mean(psd[(f >= 8) & (f <= 13)])
+    delta_power = np.mean(psd[(f >= 1) & (f <= 4)]) if np.any((f >= 1) & (f <= 4)) else 0.0
+    alpha_power = np.mean(psd[(f >= 8) & (f <= 13)]) if np.any((f >= 8) & (f <= 13)) else 0.0
 
 
     return {
@@ -157,9 +183,12 @@ def feat_background_disruption(epoch_1ch: np.ndarray,
         "background_line_length": background_line_length,
         "background_delta_power": delta_power,
         "background_alpha_power": alpha_power,
-        "event_rms_ratio_bg": rms_ratio_event_bg
+        "event_rms_ratio_bg": event_rms_ratio_bg,
+        "post_rms_ratio_pre": post_rms_ratio_pre,
+        "event_rms_ratio_post":event_rms_ratio_post,
 
     }
+
 # Duration 
 def ied_duration_ms(epoch: np.ndarray,
                     sfreq: float,
