@@ -1,0 +1,19 @@
+{
+    "onset": {
+        "Description": "The event onset time in seconds."
+    },
+    "trial_type": {
+        "Description": "Expert annotation on the timing and location of the event, as determined through clinical assessment",
+	"Levels": {
+		"temp": "temporal",
+		"lat": "lateral",
+		"rt": "Right temporal",
+		"ant": "anterior",
+		"amy": "amygdala",
+		"mes": "mesial"
+	}
+    },
+    "sample": {
+        "Description": "The event onset time in number of sampling points."
+    }
+}

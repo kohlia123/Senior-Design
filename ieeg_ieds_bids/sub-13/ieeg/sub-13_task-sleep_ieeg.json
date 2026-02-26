@@ -1,0 +1,19 @@
+{
+    "TaskName": "sleep",
+    "InstitutionName": "UCLA",
+    "Manufacturer": "n/a",
+    "PowerLineFrequency": 60.0,
+    "SamplingFrequency": 1000.0,
+    "SoftwareFilters": "n/a",
+    "RecordingDuration": 195.999,
+    "RecordingType": "continuous",
+    "iEEGReference": "scalp",
+    "ECOGChannelCount": 0,
+    "SEEGChannelCount": 20,
+    "EEGChannelCount": 0,
+    "EOGChannelCount": 0,
+    "ECGChannelCount": 0,
+    "EMGChannelCount": 0,
+    "MiscChannelCount": 0,
+    "TriggerChannelCount": 0
+}

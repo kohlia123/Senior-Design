@@ -1,22 +1,23 @@
 import numpy as np
 import pandas as pd
-import antropy as ant
 import scipy.stats as sp_stats
 import mne
 from mne_bids import BIDSPath, read_raw_bids
-from mne_features.feature_extraction import extract_features
 from pathlib import Path
-
+from src.feature_extraction import (
+    feat_sharpness, 
+    ied_duration_ms, 
+    get_ptp_amplitude, 
+    feat_slow_afterwave,
+    feat_background_disruption
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BIDS_ROOT = PROJECT_ROOT / "ieeg_ieds_bids"
 
 
 def onset_per_chan(subj):
-    """
-    Create a dictionary with the onsets of each channel
-    """
-    # load the list of channels for each annotation
+    """Create a dictionary with the onsets of each channel"""
     events_interp_path = (
             BIDS_ROOT
             / "derivatives"
@@ -25,7 +26,6 @@ def onset_per_chan(subj):
     tags_df = pd.read_csv(events_interp_path, sep="\t")
     result_dict = {}
 
-    # Iterate over the DataFrame rows
     for _, row in tags_df.iterrows():
         onset = row['time_in_sec']
         chans = row['chans']
@@ -34,77 +34,101 @@ def onset_per_chan(subj):
                 result_dict[string] = []
             result_dict[string].append(onset)
 
-    # in case of extra space
     result_dict.pop('', None)
     return result_dict
 
-
 def extract_epochs_features(epochs, subj, sr):
-    """
-    Extract features from the epochs of a single channel
-    """
-    mobility, complexity = ant.hjorth_params(epochs, axis=1)
-    feat = {
-        'subj': np.full(len(epochs), subj),
-        'epoch_id': np.arange(len(epochs)),
-        'kurtosis': sp_stats.kurtosis(epochs, axis=1),
-        'hjorth_mobility': mobility,
-        'hjorth_complexity': complexity,
-        'ptp_amp': np.ptp(epochs, axis=1),
-        'samp_entropy': np.apply_along_axis(ant.sample_entropy, axis=1, arr=epochs)
-    }
+    epochs_np = np.array(epochs)
+    feats = []
+    
+    # Pre-define column names for consistent DataFrame shape
+    slow_wave_cols = ["slow_amplitude", "spike_amplitude", "amplitude_ratio", "latency_ms", "duration_ms"]
+    bg_cols = ["background_rms", "background_std", "background_line_length", 
+               "background_delta_power", "background_alpha_power", "event_rms_ratio_bg"]
 
-    # Extract teager-kaiser energy
-    X_new = extract_features(np.array(epochs)[:, np.newaxis, :], sr, ['teager_kaiser_energy'], return_as_df=True)
-    # rename columns
-    X_new.columns = [name[0] + '_' + name[1].replace('ch0_', '') for name in X_new.columns]
+    for i, epoch in enumerate(epochs_np):
+        # Anchor all searches at the midpoint (500ms mark)
+        mid_idx = len(epoch) // 2
+        
+        # Base metadata and Morphology
+        row = {
+            'subj': subj,
+            'epoch_id': i,
+            'ptp_amp': np.ptp(epoch),
+            'sharpness': feat_sharpness(epoch, sr),
+            'ied_duration': ied_duration_ms(epoch, sr, onset_idx=mid_idx)
+        }
+        
+        # Extract Slow After-wave (returns bool, dict)
+        _, slow_feats = feat_slow_afterwave(epoch, sr, spike_index=mid_idx)
+        if slow_feats:
+            row.update(slow_feats)
+        else:
+            row.update({k: 0.0 for k in slow_wave_cols})
 
-    # Convert to dataframe
-    feat = pd.DataFrame(feat)
-    feat = pd.concat([feat, X_new], axis=1)
+        # Extract Background Context (returns dict)
+        bg_feats = feat_background_disruption(epoch, sr, spike_index=mid_idx)
+        if bg_feats:
+            row.update(bg_feats)
+        else:
+            row.update({k: 0.0 for k in bg_cols})
+            
+        feats.append(row)
 
-    return feat
-
+    # Convert the list of dictionaries into a single DataFrame
+    final_feats = pd.DataFrame(feats)
+    cols_to_fix = [c for c in final_feats.columns if c not in ['subj', 'epoch_id']]
+    final_feats[cols_to_fix] = final_feats[cols_to_fix].apply(pd.to_numeric, errors='coerce').fillna(0.0)
+    
+    return final_feats
 
 def get_subj_data(subj):
-    """
-    Get features and labels of a single subject (all channels)
-    """
-    window_size = 250  # ms
-    raw = read_raw_bids(BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'))
+    window_size_ms = 1200  
+    stride_ms = 250       
+    
+    # Load raw data - verbose=False prevents terminal flooding
+    raw = read_raw_bids(
+        BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'), 
+        verbose=False
+    )
     chans_onsets = onset_per_chan(subj)
+    sfreq = raw.info['sfreq']
 
     y = []
     x = pd.DataFrame()
-    # iterate over all channels that have annotations
+    
+    window_samples = int((window_size_ms / 1000.0) * sfreq)
+    stride_samples = int((stride_ms / 1000.0) * sfreq)
+
     for chan in chans_onsets.keys():
         epochs = []
+        
+        # 1. Extract and normalize
         chan_raw = raw.copy().pick([chan]).get_data().flatten()
-        # normalize chan
         chan_norm = (chan_raw - chan_raw.mean()) / chan_raw.std()
-        # run on all 250ms epochs excluding the last 1s
-        for i in range(0, len(chan_norm) - 4 * window_size, window_size):
-            epochs.append(chan_norm[i: i + window_size])
+        
+        # 2. Slice the normalized data
+        # Move by 250ms stride, but grab 1000ms windows
+        for i in range(0, len(chan_norm) - window_samples, stride_samples):
+            epochs.append(chan_norm[i : i + window_samples])
 
-        # mark the spikes in the right index
-        curr_y = [0] * len(epochs)
-        for onset in chans_onsets[chan]:
-            curr_y[int(onset // 0.25)] = 1
+        # 3. Labeling Logic (Overlapping)
+        curr_y = []
+        for i in range(len(epochs)):
+            start_sec = (i * stride_samples) / sfreq
+            end_sec = start_sec + (window_size_ms / 1000.0)
+            
+            # Check if any annotation falls within this 1s window
+            is_spike = any(start_sec <= onset < end_sec for onset in chans_onsets[chan])
+            curr_y.append(1 if is_spike else 0)
 
-        # add epoch-level features
-        curr_feat = extract_epochs_features(epochs, subj, raw.info['sfreq'])
-        # add channel-level features
-        chan_feat = {
-            'chan_name': chan,
-            'chan_ptp': np.ptp(chan_norm),
-            'chan_kurt': sp_stats.kurtosis(chan_norm),
-        }
-
-        for feat in chan_feat.keys():
-            curr_feat[feat] = chan_feat[feat]
-
-        # save the epochs as column for debugging/visualization
-        curr_feat['epoch'] = epochs
+        # 4. Extract Features
+        curr_feat = extract_epochs_features(epochs, subj, sfreq)
+        
+        # 5. Metadata
+        curr_feat['chan_name'] = chan
+        curr_feat['epoch'] = epochs 
+        
         x = pd.concat([x, curr_feat], axis=0)
         y.extend(curr_y)
 

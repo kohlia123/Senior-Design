@@ -1,0 +1,26 @@
+{
+    "name": {
+        "Description": "Name of the channel"
+    },
+    "type": {
+        "Description": "Type of the channel"
+    },
+    "units": {
+        "Description": "Measurement unit of the data values"
+    },
+    "low_cutoff": {
+        "Description": "Low cutoff frequency of the filter in Hz"
+    },
+    "high_cutoff": {
+        "Description": "High cutoff frequency of the filter in Hz"
+    },
+    "sampling_frequency": {
+        "Description": "Sampling frequency in Hz"
+    },
+    "side": {
+        "Description": "Side of the brain. L for left, R for right"
+    },
+    "soz_region": {
+        "Description": "Seizure onset zone considering laterality and lobe. 1 for yes, 0 for no. "
+    }
+}
