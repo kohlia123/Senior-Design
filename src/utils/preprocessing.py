@@ -83,7 +83,7 @@ def extract_epochs_features(epochs, subj, sr):
     return final_feats
 
 def get_subj_data(subj):
-    window_size_ms = 1000  
+    window_size_ms = 1200  
     stride_ms = 250       
     
     # Load raw data - verbose=False prevents terminal flooding

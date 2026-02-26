@@ -6,7 +6,7 @@ import joblib
 import os
 import time
 
-from sklearn.ensemble import RandomForestClassifier
+from lightgbm import LGBMClassifier
 from sklearn.model_selection import StratifiedGroupKFold
 from imblearn.under_sampling import RandomUnderSampler
 from joblib import Parallel, delayed
@@ -53,13 +53,11 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
             y_train_raw, y_test = y[train_index], y[test_index]
 
             X_train, y_train = rus.fit_resample(X_train_raw, y_train_raw)
+            X_train = X_train.fillna(0)
+            X_test_raw = X_test_raw.fillna(0)
 
-            # add class_weight='balanced'
-            model = RandomForestClassifier(
-                n_estimators=100,
-                class_weight='balanced',
-                n_jobs=-1,
-                random_state=random_state
+            model = LGBMClassifier(
+             
             )
             start = time.time()
             model.fit(X_train, y_train)
@@ -68,6 +66,7 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
 
             y_score = model.predict_proba(X_test_raw)[:, 1]
 
+            
             # find best threshold using precision-recall curve
             from sklearn.metrics import precision_recall_curve
             precision_curve, recall_curve, thresholds = precision_recall_curve(y_train_raw, 
@@ -75,8 +74,10 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
             f1_scores = 2 * (precision_curve * recall_curve) / (precision_curve + recall_curve + 1e-9)
             best_thresh = thresholds[np.argmax(f1_scores[:-1])]  # thresholds is 1 shorter than p/r
             print(f"  Best threshold for fold {fold + 1}: {best_thresh:.3f}")
+            
+            
 
-            # use best threshold instead of default 0.5
+            #best_thresh = 0.35
             y_pred = (y_score >= best_thresh).astype(int)
 
             # Metrics 
@@ -96,14 +97,18 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
             # SHAP 
             explainer = shap.TreeExplainer(model)
             X_test_sample = X_test_raw.sample(min(len(X_test_raw), 100), random_state=random_state)
+            
+            # This generates the values that were causing the warning
             shap_v = explainer.shap_values(X_test_sample)
-            print(f"  SHAP type: {type(shap_v)}, shape: {np.array(shap_v).shape}")
+
+            # Fix: LightGBM in SHAP 0.46+ returns a list where [1] is the positive class
             if isinstance(shap_v, list):
                 all_shap_values.append(shap_v[1])
             else:
-                all_shap_values.append(shap_v[:, :, 1])
+                # If it's a single array, binary LightGBM usually provides class 1 values directly
+                all_shap_values.append(shap_v)
+                
             all_test_features.append(X_test_sample)
-            print(f"  Fold {fold + 1} complete. SHAP samples collected: {len(X_test_sample)}")
 
         except Exception as e:
             print(f"  Fold {fold + 1} FAILED with error: {e}")
@@ -141,7 +146,7 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
 
 if __name__ == "__main__":
     # Load list of subjects (e.g., ['01', '02', ...])
-    subjects = [f"{i:02d}" for i in range(2, N_SUB + 1)]
+    subjects = [f"{i:02d}" for i in range(1, N_SUB + 1)]
     
     # Build dataset
     X_feat, y = build_dataset(subjects)
