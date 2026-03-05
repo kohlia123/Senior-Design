@@ -8,6 +8,9 @@ This project aims to develop a machine learning pipeline to detect interictal ep
 python3 -m venv .venv
 source .venv/bin/activate
 
+### Verify python version is aligned
+Python 3.9.6
+
 ### Install dependencies
 pip install -r requirements.txt
 
