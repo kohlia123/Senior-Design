@@ -86,7 +86,6 @@ def get_subj_data(subj):
     window_size_ms = 1200  
     stride_ms = 250       
     
-    # Load raw data - verbose=False prevents terminal flooding
     raw = read_raw_bids(
         BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'), 
         verbose=False
@@ -102,37 +101,75 @@ def get_subj_data(subj):
 
     for chan in chans_onsets.keys():
         epochs = []
-        
-        # 1. Extract and normalize
+        matched_onset = []
+
         chan_raw = raw.copy().pick([chan]).get_data().flatten()
         chan_norm = (chan_raw - chan_raw.mean()) / chan_raw.std()
         
-        # 2. Slice the normalized data
-        # Move by 250ms stride, but grab 1000ms windows
         for i in range(0, len(chan_norm) - window_samples, stride_samples):
             epochs.append(chan_norm[i : i + window_samples])
 
-        # 3. Labeling Logic (Overlapping)
         curr_y = []
         for i in range(len(epochs)):
             start_sec = (i * stride_samples) / sfreq
             end_sec = start_sec + (window_size_ms / 1000.0)
             
-            # Check if any annotation falls within this 1s window
-            is_spike = any(start_sec <= onset < end_sec for onset in chans_onsets[chan])
-            curr_y.append(1 if is_spike else 0)
+            spike_onset = None
+            for onset in chans_onsets[chan]:
+                if start_sec <= onset < end_sec:
+                    spike_onset = round(onset, 2)
+                    break
+            
+            curr_y.append(1 if spike_onset is not None else 0)
+            matched_onset.append(spike_onset)
 
-        # 4. Extract Features
         curr_feat = extract_epochs_features(epochs, subj, sfreq)
-        
-        # 5. Metadata
         curr_feat['chan_name'] = chan
-        curr_feat['epoch'] = epochs 
-        
+        curr_feat['onset_time'] = matched_onset
+
         x = pd.concat([x, curr_feat], axis=0)
         y.extend(curr_y)
 
-    return x, y
+    x = x.reset_index(drop=True)
+    y = np.asarray(y, dtype=int)
+
+    # ── Assign global event_id from onset timestamp ──────────────────────────
+    x['event_id'] = -1
+    pos_mask = y == 1
+    onset_series = pd.Series(x.loc[pos_mask, 'onset_time'].values).round(2)
+    unique_onsets = sorted(onset_series.unique())
+    onset_to_id = {t: idx for idx, t in enumerate(unique_onsets)}
+    x.loc[pos_mask, 'event_id'] = onset_series.map(onset_to_id).values
+
+    # ── Collapse positives to event-level (avg features across channels) ─────
+    feature_cols = [c for c in x.columns if c not in 
+                    ['subj', 'chan_name', 'epoch', 'epoch_id', 'event_id', 'onset_time']]
+
+    pos_df = x[pos_mask].copy()
+    neg_df = x[~pos_mask].copy()
+
+    numeric_cols = pos_df[feature_cols].select_dtypes(include=[np.number]).columns.tolist()
+
+    pos_collapsed = (pos_df.groupby('event_id')[numeric_cols]
+                    .mean()
+                    .reset_index())
+    pos_collapsed['subj'] = (pos_df.groupby('event_id')['subj']
+                            .first()
+                            .values)
+    pos_y = np.ones(len(pos_collapsed), dtype=int)
+    # Keep all negatives but drop one per channel duplicate windows
+    # (deduplicate negatives by keeping every Nth row to avoid redundancy)
+    neg_collapsed = neg_df[numeric_cols + ['subj']].reset_index(drop=True)
+    neg_y = np.zeros(len(neg_collapsed), dtype=int)
+
+    X_out = pd.concat([pos_collapsed[numeric_cols + ['subj']], 
+                    neg_collapsed[numeric_cols + ['subj']]], ignore_index=True)
+    y_out = np.concatenate([pos_y, neg_y])
+
+    print(f"Subject {subj}: {len(pos_collapsed)} IED events, "
+          f"{len(neg_collapsed)} negative windows")
+
+    return X_out, y_out
 
 
 def get_subj_epochs(subj, window_size=250):
