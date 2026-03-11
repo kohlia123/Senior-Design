@@ -43,7 +43,8 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
     all_shap_values = []
     all_test_features = []
     
-    feature_cols = [c for c in X.columns if c not in ['subj', 'chan_name', 'epoch', 'epoch_id']]
+    feature_cols = [c for c in X.columns if c not in 
+                ['subj', 'chan_name', 'epoch', 'epoch_id', 'event_id', 'onset_time']]
 
     for fold, (train_index, test_index) in enumerate(kf.split(X, y, groups=groups)):
         print(f"--- Processing Fold {fold + 1} ---")
@@ -55,6 +56,7 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
             X_train, y_train = rus.fit_resample(X_train_raw, y_train_raw)
             X_train = X_train.fillna(0)
             X_test_raw = X_test_raw.fillna(0)
+
 
             model = LGBMClassifier(
              
@@ -114,6 +116,18 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
             print(f"  Fold {fold + 1} FAILED with error: {e}")
             raise
 
+    cm = confusion_matrix(y_test, y_pred)
+
+    # Plotting
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Purples', 
+                xticklabels=['Normal', 'IED'], 
+                yticklabels=['Normal', 'IED'])
+    plt.ylabel('Actual')
+    plt.xlabel('Predicted')
+    plt.title(f'Confusion Matrix - Fold {fold + 1}')
+    plt.show()
+
     # Summary (unchanged)
     results = pd.DataFrame(metrics)
     results.loc["mean"] = results.mean(numeric_only=True)
@@ -146,7 +160,7 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
 
 if __name__ == "__main__":
     # Load list of subjects (e.g., ['01', '02', ...])
-    subjects = [f"{i:02d}" for i in range(1, N_SUB + 1)]
+    subjects = [f"{i:02d}" for i in range(2, N_SUB + 1)]
     
     # Build dataset
     X_feat, y = build_dataset(subjects)
