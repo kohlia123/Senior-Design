@@ -13,8 +13,7 @@ __pycache__/
 # Jupyter Notebooks
 .ipynb_checkpoints/
 
-# Data Files (Crucial for iEEG/EDF data)
-# We ignore these because they are usually too large for GitHub
+# Data Files
 data/
 *.mat
 *.edf
@@ -23,7 +22,6 @@ data/
 *.csv
 
 # Model Weights
-# Don't upload large trained model files
 models/
 *.pth
 *.h5
