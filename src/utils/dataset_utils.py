@@ -39,7 +39,7 @@ def is_folder_empty(folder):
 
 
 def setup_dataset(file_id, project_root):
-    extracted_folder = project_root / "data"
+    extracted_folder = project_root / "ieeg_ieds_bids"
     zip_path = project_root / "ieeg_ieds_bids_final.zip"
 
     # Check if data already exists
@@ -52,7 +52,7 @@ def setup_dataset(file_id, project_root):
         download_data(file_id, zip_path)
 
     # Extract ZIP directly into /data/
-    extract_zip_into_data(zip_path, extracted_folder)
+    extract_zip_into_data(zip_path, project_root)
 
     # Delete ZIP
     delete_zip(zip_path)

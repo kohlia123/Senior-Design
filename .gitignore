@@ -21,6 +21,14 @@ data/
 *.npz
 *.csv
 
+# Data Files
+ieeg_ieds_bids/
+*.mat
+*.edf
+*.npy
+*.npz
+*.csv
+
 # Model Weights
 models/
 *.pth
