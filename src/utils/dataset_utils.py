@@ -32,12 +32,18 @@ def delete_zip(zip_path):
         print(f"Deleted ZIP.")
 
 
+def is_folder_empty(folder):
+    # ignore hidden files (like .DS_Store)
+    items = [f for f in folder.iterdir() if not f.name.startswith(".")]
+    return len(items) == 0
+
+
 def setup_dataset(file_id, project_root):
-    extracted_folder = project_root / "ieeg_ieds_bids"
+    extracted_folder = project_root / "data"
     zip_path = project_root / "ieeg_ieds_bids_final.zip"
 
     # Check if data already exists
-    if extracted_folder.exists():
+    if extracted_folder.exists() and not is_folder_empty(extracted_folder):
         print(f"Dataset already available {project_root}")
         return extracted_folder
 
@@ -46,7 +52,7 @@ def setup_dataset(file_id, project_root):
         download_data(file_id, zip_path)
 
     # Extract ZIP directly into /data/
-    extract_zip_into_data(zip_path, project_root)
+    extract_zip_into_data(zip_path, extracted_folder)
 
     # Delete ZIP
     delete_zip(zip_path)
