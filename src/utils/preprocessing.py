@@ -38,7 +38,7 @@ def onset_per_chan(subj):
     result_dict.pop('', None)
     return result_dict
 
-def extract_epochs_features(epochs, subj, sr):
+def extract_epochs_features(epochs, subj, sfreq):
     epochs_np = np.array(epochs)
     feats = []
     
@@ -56,22 +56,22 @@ def extract_epochs_features(epochs, subj, sr):
             'subj': subj,
             'epoch_id': i,
             'ptp_amp': np.ptp(epoch),
-            'sharpness': feat_sharpness(epoch, sr),
-            'ied_duration': ied_duration_ms(epoch, sr, onset_idx=mid_idx)
+            'sharpness': feat_sharpness(epoch, sfreq),
+            'ied_duration': ied_duration_ms(epoch, sfreq, onset_idx=mid_idx)
         }
 
         # Auxiliary function for testing: visualize the epoch with the spike marked
-        # plot_epoch(epoch, sr, spike_idx=mid_idx, title=f"Subject {subj} - Epoch {i}")
+        # plot_epoch(epoch, sfreq, spike_idx=mid_idx, title=f"Subject {subj} - Epoch {i}")
 
         # Extract Slow After-wave (returns bool, dict)
-        _, slow_feats = feat_slow_afterwave(epoch, sr, spike_index=mid_idx)
+        _, slow_feats = feat_slow_afterwave(epoch, sfreq, spike_index=mid_idx)
         if slow_feats:
             row.update(slow_feats)
         else:
             row.update({k: 0.0 for k in slow_wave_cols})
 
         # Extract Background Context (returns dict)
-        bg_feats = feat_background_disruption(epoch, sr, spike_index=mid_idx)
+        bg_feats = feat_background_disruption(epoch, sfreq, spike_index=mid_idx)
         if bg_feats:
             row.update(bg_feats)
         else:
