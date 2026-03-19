@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import butter, filtfilt, welch
-
+from src.utils.plotting import plot_epoch
+import matplotlib.pyplot as plt
 import scipy.stats as sp_stats
 
 # Sharpness
@@ -39,7 +40,9 @@ def feat_sharpness(epoch_1ch: np.ndarray,
     slope_right = abs((x[right_idx] - x[peak_idx]) / dt_right)
 
     # Return the average slope as the sharpness measure
-    return 0.5 * (slope_left + slope_right)
+    avg_slope = 0.5 * (slope_left + slope_right)
+
+    return avg_slope
 
 
 def _bandpass(x, fs, low, high, order=4):
