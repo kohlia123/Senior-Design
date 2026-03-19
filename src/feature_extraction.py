@@ -4,26 +4,41 @@ from scipy.signal import butter, filtfilt, welch
 import scipy.stats as sp_stats
 
 # Sharpness
-def feat_sharpness(epoch_1ch: np.ndarray, sfreq: float, window_ms: float = 5.0) -> float:
+def feat_sharpness(epoch_1ch: np.ndarray,
+                   sfreq: float,
+                   window_ms: float = 5.0) -> float:
     x = np.asarray(epoch_1ch, dtype=float)
+
+    # Epoch sample size
     n = x.size
+
+    # Not enough points to compute slope → return NaN
     if n < 3:
         return np.nan
 
+    # Find index of the peak (maximum absolute amplitude)
     peak_idx = int(np.argmax(np.abs(x)))
+
+    # Convert window size from ms → samples
     w = max(1, int(round((window_ms / 1000.0) * sfreq)))
 
+    # Define indices around the peak for slope computation
     left_idx = max(0, peak_idx - w)
     right_idx = min(n - 1, peak_idx + w)
+
+    # If the window coincides with the peak itself (too small) → return NaN
     if left_idx == peak_idx or right_idx == peak_idx:
         return np.nan
 
+    # Compute time differences (in seconds) between peak and window boundaries
     dt_left = (peak_idx - left_idx) / sfreq
     dt_right = (right_idx - peak_idx) / sfreq
 
+    # Compute slope on left side of peak
     slope_left = abs((x[peak_idx] - x[left_idx]) / dt_left)
     slope_right = abs((x[right_idx] - x[peak_idx]) / dt_right)
 
+    # Return the average slope as the sharpness measure
     return 0.5 * (slope_left + slope_right)
 
 
