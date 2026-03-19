@@ -85,17 +85,21 @@ def extract_epochs_features(epochs, subj, sr):
 def get_subj_data(subj):
     window_size_ms = 1200  
     stride_ms = 250       
-    
+
+    # Load raw data
     raw = read_raw_bids(
         BIDSPath(subject=subj, task='sleep', root=BIDS_ROOT, datatype='ieeg'), 
         verbose=False
     )
+
+    # Use onset_per_chan to get dictionary of channel → onset times
     chans_onsets = onset_per_chan(subj)
     sfreq = raw.info['sfreq']
 
     y = []
     x = pd.DataFrame()
-    
+
+    # Convert window/stride from ms → samples
     window_samples = int((window_size_ms / 1000.0) * sfreq)
     stride_samples = int((stride_ms / 1000.0) * sfreq)
 
@@ -103,42 +107,69 @@ def get_subj_data(subj):
         epochs = []
         matched_onset = []
 
+        # Extract channel data
         chan_raw = raw.copy().pick([chan]).get_data().flatten()
+
+        # Normalize channel
         chan_norm = (chan_raw - chan_raw.mean()) / chan_raw.std()
-        
+
+        # Create sliding windows (epochs)
         for i in range(0, len(chan_norm) - window_samples, stride_samples):
             epochs.append(chan_norm[i : i + window_samples])
 
+        # Label each window (does it contain a spike onset?)
         curr_y = []
         for i in range(len(epochs)):
+            # Convert window index → time (seconds)
             start_sec = (i * stride_samples) / sfreq
             end_sec = start_sec + (window_size_ms / 1000.0)
             
             spike_onset = None
+
+            # Check if any annotated onset falls inside this window
             for onset in chans_onsets[chan]:
                 if start_sec <= onset < end_sec:
-                    spike_onset = round(onset, 2)
+                    spike_onset = round(onset, 2)  # round for consistency
                     break
-            
+
+            # Binary label: 1 = spike present, 0 = no spike
             curr_y.append(1 if spike_onset is not None else 0)
+
+            # Store matched onset (or None)
             matched_onset.append(spike_onset)
 
+        # Extract features for all epochs in this channel
         curr_feat = extract_epochs_features(epochs, subj, sfreq)
+
+        # Add metadata
         curr_feat['chan_name'] = chan
         curr_feat['onset_time'] = matched_onset
 
+        # Append to global dataframe
         x = pd.concat([x, curr_feat], axis=0)
+
+        # Append labels
         y.extend(curr_y)
 
+    # Reset indexing and convert labels to numpy array
     x = x.reset_index(drop=True)
     y = np.asarray(y, dtype=int)
 
     # ── Assign global event_id from onset timestamp ──────────────────────────
+    # (same onset across channels = same event)
     x['event_id'] = -1
-    pos_mask = y == 1
+    pos_mask = y == 1  # windows containing spikes
+
+    # Round onset times to ensure consistent grouping
     onset_series = pd.Series(x.loc[pos_mask, 'onset_time'].values).round(2)
+
+    # Unique spike events (shared across channels)
     unique_onsets = sorted(onset_series.unique())
+
+    # Map each onset time → unique event_id
     onset_to_id = {t: idx for idx, t in enumerate(unique_onsets)}
+
+    # Assign event_id to positive samples
     x.loc[pos_mask, 'event_id'] = onset_series.map(onset_to_id).values
 
     # ── Collapse positives to event-level (avg features across channels) ─────
@@ -148,20 +179,28 @@ def get_subj_data(subj):
     pos_df = x[pos_mask].copy()
     neg_df = x[~pos_mask].copy()
 
+    # Keep only numeric feature columns
     numeric_cols = pos_df[feature_cols].select_dtypes(include=[np.number]).columns.tolist()
 
+    # Average features across channels for each event
     pos_collapsed = (pos_df.groupby('event_id')[numeric_cols]
                     .mean()
                     .reset_index())
+
+    # Keep subject info
     pos_collapsed['subj'] = (pos_df.groupby('event_id')['subj']
                             .first()
                             .values)
+
+    # Labels for positive events
     pos_y = np.ones(len(pos_collapsed), dtype=int)
+
     # Keep all negatives but drop one per channel duplicate windows
     # (deduplicate negatives by keeping every Nth row to avoid redundancy)
     neg_collapsed = neg_df[numeric_cols + ['subj']].reset_index(drop=True)
     neg_y = np.zeros(len(neg_collapsed), dtype=int)
 
+    # Final dataset: combine positives (event-level) + negatives
     X_out = pd.concat([pos_collapsed[numeric_cols + ['subj']], 
                     neg_collapsed[numeric_cols + ['subj']]], ignore_index=True)
     y_out = np.concatenate([pos_y, neg_y])
