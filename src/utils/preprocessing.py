@@ -11,6 +11,7 @@ from src.feature_extraction import (
     feat_slow_afterwave,
     feat_background_disruption
 )
+from src.utils.plotting import plot_epoch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BIDS_ROOT = PROJECT_ROOT / "ieeg_ieds_bids"
@@ -58,7 +59,10 @@ def extract_epochs_features(epochs, subj, sr):
             'sharpness': feat_sharpness(epoch, sr),
             'ied_duration': ied_duration_ms(epoch, sr, onset_idx=mid_idx)
         }
-        
+
+        # Auxiliary function for testing: visualize the epoch with the spike marked
+        # plot_epoch(epoch, sr, spike_idx=mid_idx, title=f"Subject {subj} - Epoch {i}")
+
         # Extract Slow After-wave (returns bool, dict)
         _, slow_feats = feat_slow_afterwave(epoch, sr, spike_index=mid_idx)
         if slow_feats:

@@ -78,3 +78,22 @@ def plot_ied(
 
     plt.tight_layout()
     plt.show()
+
+
+def plot_epoch(epoch, sfreq, spike_idx= None, title="IED Epoch"):
+    # Plot a single epoch.
+    times = np.arange(len(epoch)) / sfreq  # time in seconds
+
+    plt.figure(figsize=(8, 3))
+    plt.plot(times, epoch, color='tab:blue', label='EEG signal')
+
+    if spike_idx is not None:
+        plt.axvline(x=spike_idx / sfreq, color='red', linestyle='--', label='Spike onset')
+
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude (a.u.)")
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
