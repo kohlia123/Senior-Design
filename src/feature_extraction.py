@@ -49,6 +49,8 @@ def _bandpass(x, fs, low, high, order=4):
     nyq = 0.5 * fs
     b, a = butter(order, [low/nyq, high/nyq], btype="band")
     return filtfilt(b, a, x)
+
+
 # Slow afterwave
 def feat_slow_afterwave(epoch_1ch: np.ndarray,
                         sfreq: float,
@@ -113,6 +115,8 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     }
 
     return slow_present, features
+
+
 # Background disruption
 def feat_background_disruption(epoch_1ch: np.ndarray,
                                sfreq: float,
@@ -207,6 +211,7 @@ def feat_background_disruption(epoch_1ch: np.ndarray,
 
     }
 
+
 # Duration 
 def ied_duration_ms(epoch: np.ndarray,
                     sfreq: float,
@@ -214,48 +219,71 @@ def ied_duration_ms(epoch: np.ndarray,
                     k: float = 4.0,
                     peak_search_ms: float = 30.0,
                     min_ms: float = 5.0) -> float:
+    """Compute IED duration in milliseconds"""
+
+    # Ensure epoch is a float array and it has enough samples to compute duration
     x = np.asarray(epoch, dtype=float)
-    if x.ndim != 1 or x.size < 3:
+    if x.ndim != 1 or x.size < 3:  # Not enough samples to compute duration
         return 0.0
 
+    # Remove DC offset by subtracting median
     x = x - np.median(x)
 
+    # Estimate signal scale using Median Absolute Deviation (MAD)
     mad = np.median(np.abs(x - np.median(x)))
-    scale = 1.4826 * mad
-    if scale <= 1e-12:
+    scale = 1.4826 * mad  # Converts MAD to standard deviation equivalent
+    if scale <= 1e-12:  # Avoid division by zero / flat signal
         return 0.0
 
-    thr = k * scale #setting threshold
-    active = np.abs(x) >= thr #marks which samples are big enough 
-    if not np.any(active):
+    # Define threshold for “active” spike samples
+    thr = k * scale
+    active = np.abs(x) >= thr  # marks which samples are big enough
+    if not np.any(active):  # No samples exceed threshold → no IED
         return 0.0
 
+    # Convert peak search window from ms → samples
     r = int((peak_search_ms / 1000.0) * sfreq)
+
+    # Clip onset index to valid range
     onset_idx = int(np.clip(onset_idx, 0, x.size - 1))
+
+    # Define local window around onset to find the true peak
     lo = max(0, onset_idx - r)
     hi = min(x.size, onset_idx + r + 1)
 
+    # Find local peak within this window
     peak_local = int(np.argmax(np.abs(x[lo:hi])))
     peak_idx = lo + peak_local
 
+    # If the peak is not active (below threshold), fallback to global max
     if not active[peak_idx]:
         peak_idx = int(np.argmax(np.abs(x)))
-        if not active[peak_idx]:
+        if not active[peak_idx]:  # Still no active peak → no IED
             return 0.0
 
+    # Expand left from peak until signal falls below threshold
     left = peak_idx
     while left > 0 and active[left]:
         left -= 1
+
+    # Expand right from peak until signal falls below threshold
     right = peak_idx
     while right < x.size - 1 and active[right]:
         right += 1
 
+    # Compute duration in samples
     dur_samples = (right - 1) - (left + 1) + 1
     if dur_samples <= 0:
         return 0.0
 
+    # Return duration if above minimum threshold, otherwise return 0
     dur_ms = 1000.0 * dur_samples / float(sfreq)
-    return dur_ms if dur_ms >= float(min_ms) else 0.0
+    if dur_ms < min_ms:
+        return 0.0
+
+    return dur_ms
+
+
 # Amplitude
 def get_ptp_amplitude(epochs):
     return np.ptp(epochs, axis=1)
