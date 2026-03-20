@@ -4,6 +4,70 @@ from src.utils.plotting import plot_epoch
 import matplotlib.pyplot as plt
 import scipy.stats as sp_stats
 
+
+def detect_spike_idx(epoch: np.ndarray,
+                     k: float = 3.0):
+    """
+    Detect the index of a spike in an EEG epoch using a MAD-based threshold.
+
+    This function identifies the most prominent "spike" in a 1D signal by:
+    1. Estimating the signal variability using the Median Absolute Deviation (MAD).
+    2. Computing a threshold as `thr = k * (1.4826 * MAD)`.
+    3. Marking all samples with absolute amplitude above the threshold as "active".
+    4. Returning the index of the strongest active sample, the threshold, and the active mask.
+
+    If no spike is detected (e.g., signal too short, flat, or no samples exceed threshold),
+    the function returns `(None, 0.0, active)` where `active` is a boolean array of the same
+    length as `x`.
+
+    Parameters
+    ----------
+    epoch : np.ndarray
+        1D array containing the EEG signal for a single epoch.
+    k : float, default=3.0
+        Multiplier for the MAD-based threshold to define spike activity.
+
+    Returns
+    -------
+    spike_idx : int or None
+        Index of the detected spike (the largest "active" sample). None if no spike is detected.
+    thr : float
+        The MAD-based threshold used to define active samples.
+    active : np.ndarray of bool
+        Boolean array indicating which samples exceeded the threshold.
+
+    Notes
+    -----
+    - The input signal is assumed to be preprocessed (e.g., z-score normalized),
+      so additional baseline correction is not applied.
+    """
+
+    # Ensure epoch is a float array and it has enough samples
+    epoch = np.asarray(epoch, dtype=float)
+    n = epoch.size
+    if n < 3:
+        return None, 0.0, np.zeros_like(epoch, dtype=bool)
+
+    # Estimate signal scale using Median Absolute Deviation (MAD)
+    mad = np.median(np.abs(epoch - np.median(epoch)))
+    scale = 1.4826 * mad  # Converts MAD to standard deviation equivalent
+    if scale <= 1e-12:  # Avoid division by zero / flat signal
+        return None, 0.0, np.zeros_like(epoch, dtype=bool)
+
+    # Define threshold for “active” spike samples
+    thr = k * scale
+    active = np.abs(epoch) >= thr  # marks which samples are big enough
+
+    if not np.any(active):  # No samples exceed threshold → no IED
+        return None, 0.0, np.zeros_like(epoch, dtype=bool)
+
+    # Pick strongest active sample
+    active_idxs = np.where(active)[0]
+    spike_idx = active_idxs[np.argmax(np.abs(epoch[active_idxs]))]
+
+    return spike_idx, thr, active
+
+
 # Sharpness
 def feat_sharpness(epoch_1ch: np.ndarray,
                    sfreq: float,
@@ -69,8 +133,12 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     if n < 3:
         return False, {}
 
-    # Ensure spike index is within valid bounds
-    spike_index = int(np.clip(spike_index, 0, n-1))
+    # Handle missing spike index
+    if spike_index is None:
+        spike_index = int(np.argmax(np.abs(x)))
+    else:
+        # Ensure spike index is within valid bounds
+        spike_index = int(np.clip(spike_index, 0, n - 1))
 
     # Compute spike amplitude (absolute, since spike can be positive or negative)
     spike_amp = np.abs(x[spike_index])
@@ -93,6 +161,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
         return False, {}
 
     # Extract post-spike segment
+    slow_wave_idx = np.arange(start, end)
     window = x[start:end]
 
     # Isolate slow activity (afterwave)
@@ -100,12 +169,16 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     slow = _bandpass(window, sfreq, 1.0, 4.0)
 
     # Find peak of slow wave (max absolute amplitude)
-    peak_idx = np.argmax(np.abs(slow))
-    slow_amp = np.abs(slow[peak_idx])
+    slow_peak_idx = np.argmax(np.abs(slow))
+    slow_amp = np.abs(slow[slow_peak_idx])
 
     # Compute latency of slow wave peak relative to spike (in ms)
-    latency_samples = peak_idx + min_samples
+    latency_samples = slow_peak_idx + min_samples
     latency_ms = (latency_samples / sfreq) * 1000
+
+    # Auxiliary function for testing: visualize the epoch with the spike marked
+    # fig, ax = plot_epoch(x, sfreq, spike_idx=spike_index, slow_wave=slow_wave_idx, title=f"k = slow after wave")
+    # plt.show()
 
     # Estimate slow wave duration
     # Define threshold as 50% of slow wave peak amplitude
@@ -238,32 +311,30 @@ def feat_background_disruption(epoch_1ch: np.ndarray,
 # Duration 
 def ied_duration_ms(epoch: np.ndarray,
                     sfreq: float,
-                    onset_idx: int = None,
-                    k: float = 3.0,
-                    peak_search_ms: float = 30.0,
+                    spike_idx: int = None,
+                    active: np.ndarray = None,
                     min_ms: float = 5.0) -> float:
     """
     Estimate the duration of an interictal epileptiform discharge (IED) in milliseconds.
 
     The duration is defined as the contiguous time interval around the spike peak
-    during which the signal amplitude exceeds a threshold based on the estimate
-    of baseline variability (Median Absolute Deviation, MAD).
+    where the signal is considered "active" according to a precomputed threshold in
+    detect_spike_idx.
 
     Specifically:
-    - A threshold is computed as k × (1.4826 × MAD), where MAD is calculated from the epoch.
-    - Samples with absolute amplitude above this threshold are considered "active".
-    - The spike peak is identified either globally or within a window around a provided onset.
-    - The duration is computed by expanding left and right from the peak across contiguous
-      active samples.
-    - Only durations above `min_ms` are returned; otherwise, 0 is returned.
+    - `active` should be a boolean array indicating which samples exceed the spike threshold.
+      If `active` is None or `spike_idx` is None, the function returns 0.0.
+    - The spike peak is assumed to be at `spike_idx`, and the duration is calculated by
+      expanding left and right along contiguous `True` values in `active`.
+    - Only durations above `min_ms` are returned; otherwise, 0.0 is returned.
+    - This method captures the high-amplitude, sharp component of the IED, not necessarily
+      the full baseline-to-baseline width seen in clinical EEG definitions.
 
     Notes
     -----
     - This method captures the high-amplitude (sharp) component of the IED, rather than
       the full baseline-to-baseline duration typically reported in clinical definitions
       (e.g., 20–70 ms).
-    - The input signal is assumed to be preprocessed (e.g., z-score normalized), so
-      additional baseline correction is not applied.
 
     Parameters
     ----------
@@ -271,13 +342,11 @@ def ied_duration_ms(epoch: np.ndarray,
         1D array containing the EEG signal for a single epoch.
     sfreq : float
         Sampling frequency in Hz.
-    onset_idx : int, optional
-        Approximate index of the spike onset. If provided, the peak is searched within
-        ±peak_search_ms around this index. If None, the global maximum is used.
-    k : float, default=3.0
-        Multiplier for the MAD-based threshold.
-    peak_search_ms : float, default=30.0
-        Time window (in milliseconds) around onset_idx to search for the spike peak.
+    spike_idx : int, optional
+        Index of the spike peak. If None, no duration is computed and 0.0 is returned.
+    active : np.ndarray of bool, optional
+        Boolean array indicating which samples are "active" (above threshold). Must be
+        the same length as `epoch`.
     min_ms : float, default=5.0
         Minimum duration (in milliseconds) required to consider a valid IED.
 
@@ -292,69 +361,32 @@ def ied_duration_ms(epoch: np.ndarray,
     if x.ndim != 1 or x.size < 3:  # Not enough samples to compute duration
         return 0.0
 
-    # x = x - np.median(x)  # keep commented! since data is already z-scored, so median should be ~0
-
-    # Estimate signal scale using Median Absolute Deviation (MAD)
-    mad = np.median(np.abs(x - np.median(x)))
-    scale = 1.4826 * mad  # Converts MAD to standard deviation equivalent
-    if scale <= 1e-12:  # Avoid division by zero / flat signal
+    if spike_idx is None:
         return 0.0
 
-    # Define threshold for “active” spike samples
-    thr = k * scale
-    active = np.abs(x) >= thr  # marks which samples are big enough
-    if not np.any(active):  # No samples exceed threshold → no IED
-        return 0.0
-
-    # Find peak index: if onset is given, search for local peak around it; otherwise, take global max
-    if onset_idx is None:
-        peak_idx = int(np.argmax(np.abs(x)))
-    else:
-        # Clip onset index to valid range
-        onset_idx = int(np.clip(onset_idx, 0, x.size - 1))
-
-        # Convert peak search window from ms to samples
-        r = int((peak_search_ms / 1000.0) * sfreq)
-
-        # Define local window around onset to find the true peak
-        lo = max(0, onset_idx - r)
-        hi = min(x.size, onset_idx + r + 1)
-
-        # Find local peak within this window
-        peak_local = int(np.argmax(np.abs(x[lo:hi])))
-        peak_idx = lo + peak_local
-
-    # If the identified peak is not active (below threshold), fallback to strongest active sample
-    if not active[peak_idx]:
-        # fallback: pick the strongest active sample
-        active_indices = np.where(active)[0]
-        if active_indices.size == 0:
-            return 0.0  # safety check (shouldn't happen)
-
-        peak_idx = active_indices[np.argmax(np.abs(x[active_indices]))]
-
-    # Expand left from peak until signal falls below threshold
-    left = peak_idx
+    # Expand around peak within active region
+    left = spike_idx
     while left > 0 and active[left]:
         left -= 1
 
-    # Expand right from peak until signal falls below threshold
-    right = peak_idx
+    right = spike_idx
     while right < x.size - 1 and active[right]:
         right += 1
 
-    # Compute duration in samples
+    # Compute duration in samples (only active contiguous region)
     dur_samples = (right - 1) - (left + 1) + 1
     if dur_samples <= 0:
         return 0.0
 
-    # Return duration if above minimum threshold, otherwise return 0
-    dur_ms = 1000.0 * dur_samples / float(sfreq)
+    # Convert to milliseconds
+    dur_ms = (dur_samples / sfreq) * 1000.0
+
+    # Apply minimum duration constraint
     if dur_ms < min_ms:
         return 0.0
 
     # Auxiliary function for testing: visualize the epoch with the spike marked
-    # fig, ax = plot_epoch(x, sfreq, spike_idx=peak_idx, mad=scale, k=k, active=active, title=f"k = {k}")
+    # fig, ax = plot_epoch(x, sfreq, spike_idx=spike_idx, active=active, title=f"k =")
     # plt.show()
 
     return dur_ms
@@ -364,5 +396,3 @@ def ied_duration_ms(epoch: np.ndarray,
 def get_ptp_amplitude(epochs):
     return np.ptp(epochs, axis=1)
 
-
-#%%

@@ -5,6 +5,7 @@ import mne
 from mne_bids import BIDSPath, read_raw_bids
 from pathlib import Path
 from src.feature_extraction import (
+    detect_spike_idx,
     feat_sharpness, 
     ied_duration_ms, 
     get_ptp_amplitude, 
@@ -38,6 +39,7 @@ def onset_per_chan(subj):
     result_dict.pop('', None)
     return result_dict
 
+
 def extract_epochs_features(epochs, subj, sfreq):
     epochs_np = np.array(epochs)
     feats = []
@@ -50,18 +52,22 @@ def extract_epochs_features(epochs, subj, sfreq):
     for i, epoch in enumerate(epochs_np):
         # Anchor all searches at the midpoint (500ms mark)
         mid_idx = len(epoch) // 2
-        
+
+        # Detect spike index using MAD-based method
+        spike_idx, thr, active = detect_spike_idx(epoch, k=3.5)
+
         # Base metadata and Morphology
         row = {
             'subj': subj,
             'epoch_id': i,
             'ptp_amp': np.ptp(epoch),
             'sharpness': feat_sharpness(epoch, sfreq),
-            'ied_duration': ied_duration_ms(epoch, sfreq, onset_idx=mid_idx)
+            'ied_duration': ied_duration_ms(epoch, sfreq, spike_idx=spike_idx, active=active, min_ms=5.0)
         }
 
         # Auxiliary function for testing: visualize the epoch with the spike marked
-        # plot_epoch(epoch, sfreq, spike_idx=mid_idx, title=f"Subject {subj} - Epoch {i}")
+        # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx, title=f"Subject {subj} - Epoch {i}")
+        # plt.show()
 
         # Extract Slow After-wave (returns bool, dict)
         _, slow_feats = feat_slow_afterwave(epoch, sfreq, spike_index=mid_idx)
