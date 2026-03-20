@@ -215,8 +215,8 @@ def feat_background_disruption(epoch_1ch: np.ndarray,
 # Duration 
 def ied_duration_ms(epoch: np.ndarray,
                     sfreq: float,
-                    onset_idx: int,
-                    k: float = 4.0,
+                    onset_idx: int = None,
+                    k: float = 3.0,
                     peak_search_ms: float = 30.0,
                     min_ms: float = 5.0) -> float:
     """Compute IED duration in milliseconds"""
@@ -238,19 +238,23 @@ def ied_duration_ms(epoch: np.ndarray,
     if not np.any(active):  # No samples exceed threshold → no IED
         return 0.0
 
-    # Convert peak search window from ms → samples
+    # Convert peak search window from ms to samples
     r = int((peak_search_ms / 1000.0) * sfreq)
 
-    # Clip onset index to valid range
-    onset_idx = int(np.clip(onset_idx, 0, x.size - 1))
+    # Find peak index: if onset is given, search for local peak around it; otherwise, take global max
+    if onset_idx is None:
+        peak_idx = int(np.argmax(np.abs(x)))
+    else:
+        # Clip onset index to valid range
+        onset_idx = int(np.clip(onset_idx, 0, x.size - 1))
 
-    # Define local window around onset to find the true peak
-    lo = max(0, onset_idx - r)
-    hi = min(x.size, onset_idx + r + 1)
+        # Define local window around onset to find the true peak
+        lo = max(0, onset_idx - r)
+        hi = min(x.size, onset_idx + r + 1)
 
-    # Find local peak within this window
-    peak_local = int(np.argmax(np.abs(x[lo:hi])))
-    peak_idx = lo + peak_local
+        # Find local peak within this window
+        peak_local = int(np.argmax(np.abs(x[lo:hi])))
+        peak_idx = lo + peak_local
 
     # If the peak is not active (below threshold), fallback to global max
     if not active[peak_idx]:
@@ -284,3 +288,6 @@ def ied_duration_ms(epoch: np.ndarray,
 # Amplitude
 def get_ptp_amplitude(epochs):
     return np.ptp(epochs, axis=1)
+
+
+#%%
