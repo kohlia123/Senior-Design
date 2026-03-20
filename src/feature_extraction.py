@@ -219,7 +219,50 @@ def ied_duration_ms(epoch: np.ndarray,
                     k: float = 3.0,
                     peak_search_ms: float = 30.0,
                     min_ms: float = 5.0) -> float:
-    """Compute IED duration in milliseconds"""
+    """
+    Estimate the duration of an interictal epileptiform discharge (IED) in milliseconds.
+
+    The duration is defined as the contiguous time interval around the spike peak
+    during which the signal amplitude exceeds a threshold based on the estimate
+    of baseline variability (Median Absolute Deviation, MAD).
+
+    Specifically:
+    - A threshold is computed as k × (1.4826 × MAD), where MAD is calculated from the epoch.
+    - Samples with absolute amplitude above this threshold are considered "active".
+    - The spike peak is identified either globally or within a window around a provided onset.
+    - The duration is computed by expanding left and right from the peak across contiguous
+      active samples.
+    - Only durations above `min_ms` are returned; otherwise, 0 is returned.
+
+    Notes
+    -----
+    - This method captures the high-amplitude (sharp) component of the IED, rather than
+      the full baseline-to-baseline duration typically reported in clinical definitions
+      (e.g., 20–70 ms).
+    - The input signal is assumed to be preprocessed (e.g., z-score normalized), so
+      additional baseline correction is not applied.
+
+    Parameters
+    ----------
+    epoch : np.ndarray
+        1D array containing the EEG signal for a single epoch.
+    sfreq : float
+        Sampling frequency in Hz.
+    onset_idx : int, optional
+        Approximate index of the spike onset. If provided, the peak is searched within
+        ±peak_search_ms around this index. If None, the global maximum is used.
+    k : float, default=3.0
+        Multiplier for the MAD-based threshold.
+    peak_search_ms : float, default=30.0
+        Time window (in milliseconds) around onset_idx to search for the spike peak.
+    min_ms : float, default=5.0
+        Minimum duration (in milliseconds) required to consider a valid IED.
+
+    Returns
+    -------
+    float
+        Estimated IED duration in milliseconds. Returns 0.0 if no valid IED is detected.
+    """
 
     # Ensure epoch is a float array and it has enough samples to compute duration
     x = np.asarray(epoch, dtype=float)
