@@ -226,9 +226,6 @@ def ied_duration_ms(epoch: np.ndarray,
     if x.ndim != 1 or x.size < 3:  # Not enough samples to compute duration
         return 0.0
 
-    # Remove DC offset by subtracting median
-    x = x - np.median(x)
-
     # Estimate signal scale using Median Absolute Deviation (MAD)
     mad = np.median(np.abs(x - np.median(x)))
     scale = 1.4826 * mad  # Converts MAD to standard deviation equivalent
