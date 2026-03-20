@@ -226,6 +226,8 @@ def ied_duration_ms(epoch: np.ndarray,
     if x.ndim != 1 or x.size < 3:  # Not enough samples to compute duration
         return 0.0
 
+    # x = x - np.median(x)  # keep commented! since data is already z-scored, so median should be ~0
+
     # Estimate signal scale using Median Absolute Deviation (MAD)
     mad = np.median(np.abs(x - np.median(x)))
     scale = 1.4826 * mad  # Converts MAD to standard deviation equivalent
@@ -238,15 +240,15 @@ def ied_duration_ms(epoch: np.ndarray,
     if not np.any(active):  # No samples exceed threshold → no IED
         return 0.0
 
-    # Convert peak search window from ms to samples
-    r = int((peak_search_ms / 1000.0) * sfreq)
-
     # Find peak index: if onset is given, search for local peak around it; otherwise, take global max
     if onset_idx is None:
         peak_idx = int(np.argmax(np.abs(x)))
     else:
         # Clip onset index to valid range
         onset_idx = int(np.clip(onset_idx, 0, x.size - 1))
+
+        # Convert peak search window from ms to samples
+        r = int((peak_search_ms / 1000.0) * sfreq)
 
         # Define local window around onset to find the true peak
         lo = max(0, onset_idx - r)
@@ -256,11 +258,14 @@ def ied_duration_ms(epoch: np.ndarray,
         peak_local = int(np.argmax(np.abs(x[lo:hi])))
         peak_idx = lo + peak_local
 
-    # If the peak is not active (below threshold), fallback to global max
+    # If the identified peak is not active (below threshold), fallback to strongest active sample
     if not active[peak_idx]:
-        peak_idx = int(np.argmax(np.abs(x)))
-        if not active[peak_idx]:  # Still no active peak → no IED
-            return 0.0
+        # fallback: pick the strongest active sample
+        active_indices = np.where(active)[0]
+        if active_indices.size == 0:
+            return 0.0  # safety check (shouldn't happen)
+
+        peak_idx = active_indices[np.argmax(np.abs(x[active_indices]))]
 
     # Expand left from peak until signal falls below threshold
     left = peak_idx
@@ -281,6 +286,10 @@ def ied_duration_ms(epoch: np.ndarray,
     dur_ms = 1000.0 * dur_samples / float(sfreq)
     if dur_ms < min_ms:
         return 0.0
+
+    # Auxiliary function for testing: visualize the epoch with the spike marked
+    # fig, ax = plot_epoch(x, sfreq, spike_idx=peak_idx, mad=scale, k=k, active=active, title=f"k = {k}")
+    # plt.show()
 
     return dur_ms
 
