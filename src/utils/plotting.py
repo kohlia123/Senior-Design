@@ -80,20 +80,43 @@ def plot_ied(
     plt.show()
 
 
-def plot_epoch(epoch, sfreq, spike_idx= None, title="IED Epoch"):
+def plot_epoch(epoch, sfreq, spike_idx=None, mad=None, k=None, active=None, title="IED Epoch"):
     # Plot a single epoch.
     times = np.arange(len(epoch)) / sfreq  # time in seconds
 
-    plt.figure(figsize=(8, 3))
-    plt.plot(times, epoch, color='tab:blue', label='EEG signal')
+    fig, ax = plt.subplots(figsize=(8, 3), dpi=300)
+    ax.plot(times, epoch, color='tab:blue', label='EEG signal')
 
     if spike_idx is not None:
-        plt.axvline(x=spike_idx / sfreq, color='red', linestyle='--', label='Spike onset')
+        ax.axvline(x=spike_idx / sfreq, color='red', linestyle='--', label='Spike onset')
 
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude (a.u.)")
-    plt.title(title)
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    if mad is not None and k is not None:
+        # Add MAD threshold area
+        ax.fill_between(
+            np.arange(len(epoch)) / sfreq,  # x-axis in seconds
+            -k * mad,  # lower bound
+            k * mad,  # upper bound
+            color='red',
+            alpha=0.2,
+            label=f'±{k}×MAD threshold'
+        )
+
+    if active is not None:
+        # Highlight active samples (above threshold)
+        t = np.arange(len(epoch)) / sfreq
+        ax.scatter(
+            t[active],
+            epoch[active],
+            color='black',
+            s=10,
+            label='Active samples'
+        )
+
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude (a.u.)")
+    ax.set_title(title)
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+
+    return fig, ax
