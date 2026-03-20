@@ -61,51 +61,74 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
                         min_duration_ms: float = 40.0):
 
     x = np.asarray(epoch_1ch, dtype=float)
+
+    # Epoch sample size
     n = x.size
 
+    # Not enough points to analyze afterwave → return False with empty features
     if n < 3:
         return False, {}
 
+    # Ensure spike index is within valid bounds
     spike_index = int(np.clip(spike_index, 0, n-1))
+
+    # Compute spike amplitude (absolute, since spike can be positive or negative)
     spike_amp = np.abs(x[spike_index])
 
+    # If spike amplitude is zero, cannot compute meaningful ratio → return
     if spike_amp == 0:
         return False, {}
 
-    #search window after spike
+    # Define search window after the spike
+    # Convert latency bounds from milliseconds to samples
     min_samples = int((min_latency_ms / 1000.0) * sfreq)
     max_samples = int((max_latency_ms / 1000.0) * sfreq)
 
+    # Define search window starting after the spike
     start = spike_index + min_samples
     end = min(spike_index + max_samples, n)
 
+    # If window is outside signal bounds → no afterwave possible
     if start >= n:
         return False, {}
 
+    # Extract post-spike segment
     window = x[start:end]
 
-    # Bandpass 
+    # Isolate slow activity (afterwave)
+    # Bandpass filter to keep slow frequencies (1–4 Hz typical slow wave)
     slow = _bandpass(window, sfreq, 1.0, 4.0)
 
+    # Find peak of slow wave (max absolute amplitude)
     peak_idx = np.argmax(np.abs(slow))
     slow_amp = np.abs(slow[peak_idx])
 
+    # Compute latency of slow wave peak relative to spike (in ms)
     latency_samples = peak_idx + min_samples
     latency_ms = (latency_samples / sfreq) * 1000
 
-    # Duration estimation
+    # Estimate slow wave duration
+    # Define threshold as 50% of slow wave peak amplitude
     threshold = 0.5 * slow_amp
+
+    # Count samples where slow signal exceeds half amplitude
     duration_samples = np.sum(np.abs(slow) > threshold)
+
+    # Convert duration to milliseconds
     duration_ms = (duration_samples / sfreq) * 1000
 
+    # Compute amplitude ratio
+    # Ratio between slow wave amplitude and spike amplitude
     amp_ratio = slow_amp / spike_amp
 
+    # Determine if slow afterwave is present
     slow_present = (
-        amp_ratio >= min_ratio and
-        duration_ms >= min_duration_ms and
-        min_latency_ms <= latency_ms <= max_latency_ms
+        amp_ratio >= min_ratio and                      # slow wave is large enough
+        duration_ms >= min_duration_ms and              # slow wave lasts long enough
+        min_latency_ms <= latency_ms <= max_latency_ms  # occurs in expected time window
     )
 
+    # Store extracted features
     features = {
         "slow_amplitude": slow_amp,
         "spike_amplitude": spike_amp,
