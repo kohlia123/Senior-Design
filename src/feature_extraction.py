@@ -118,30 +118,31 @@ def _bandpass(x, fs, low, high, order=4):
 # Slow afterwave
 def feat_slow_afterwave(epoch_1ch: np.ndarray,
                         sfreq: float,
-                        spike_index: int,
+                        spike_idx: int,
                         min_latency_ms: float = 20.0,
                         max_latency_ms: float = 300.0,
                         min_ratio: float = 0.2,
                         min_duration_ms: float = 40.0):
 
-    x = np.asarray(epoch_1ch, dtype=float)
+    epoch = np.asarray(epoch_1ch, dtype=float)
 
     # Epoch sample size
-    n = x.size
+    n = epoch.size
 
     # Not enough points to analyze afterwave → return False with empty features
     if n < 3:
         return False, {}
 
     # Handle missing spike index
-    if spike_index is None:
-        spike_index = int(np.argmax(np.abs(x)))
+    if spike_idx is None:
+        # spike_idx = int(np.argmax(np.abs(epoch)))
+        return False, {}
     else:
         # Ensure spike index is within valid bounds
-        spike_index = int(np.clip(spike_index, 0, n - 1))
+        spike_idx = int(np.clip(spike_idx, 0, n - 1))
 
-    # Compute spike amplitude (absolute, since spike can be positive or negative)
-    spike_amp = np.abs(x[spike_index])
+    # Compute spike amplitude
+    spike_amp = np.abs(epoch[spike_idx])
 
     # If spike amplitude is zero, cannot compute meaningful ratio → return
     if spike_amp == 0:
@@ -153,8 +154,8 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     max_samples = int((max_latency_ms / 1000.0) * sfreq)
 
     # Define search window starting after the spike
-    start = spike_index + min_samples
-    end = min(spike_index + max_samples, n)
+    start = spike_idx + min_samples
+    end = min(spike_idx + max_samples, n)
 
     # If window is outside signal bounds → no afterwave possible
     if start >= n:
@@ -162,7 +163,15 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
 
     # Extract post-spike segment
     slow_wave_idx = np.arange(start, end)
-    window = x[start:end]
+    window = epoch[start:end]
+
+    # If the window is too short, we cannot reliably detect a slow wave → return False
+    if len(slow_wave_idx) <= 27:
+        # Auxiliary function for testing: visualize the epoch with the spike marked
+        # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx, slow_wave=slow_wave_idx,
+        #                      title=f"slow after wave")
+        # plt.show()
+        return False, {}
 
     # Isolate slow activity (afterwave)
     # Bandpass filter to keep slow frequencies (1–4 Hz typical slow wave)
@@ -173,12 +182,8 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     slow_amp = np.abs(slow[slow_peak_idx])
 
     # Compute latency of slow wave peak relative to spike (in ms)
-    latency_samples = slow_peak_idx + min_samples
+    latency_samples = slow_peak_idx + min_samples  # from the spike
     latency_ms = (latency_samples / sfreq) * 1000
-
-    # Auxiliary function for testing: visualize the epoch with the spike marked
-    # fig, ax = plot_epoch(x, sfreq, spike_idx=spike_index, slow_wave=slow_wave_idx, title=f"k = slow after wave")
-    # plt.show()
 
     # Estimate slow wave duration
     # Define threshold as 50% of slow wave peak amplitude
@@ -189,6 +194,14 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
 
     # Convert duration to milliseconds
     duration_ms = (duration_samples / sfreq) * 1000
+
+    # # Auxiliary function for testing: visualize the epoch with the spike marked
+    # duration_idx = np.where(np.abs(slow) > threshold)[0] + slow_wave_idx[0]
+    # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx, slow_wave=slow_wave_idx,
+    #                      slow_wave_max=spike_idx+latency_samples,
+    #                      slow_wave_duration=duration_idx,
+    #                      title=f"slow after wave")
+    # plt.show()
 
     # Compute amplitude ratio
     # Ratio between slow wave amplitude and spike amplitude
@@ -204,7 +217,6 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     # Store extracted features
     features = {
         "slow_amplitude": slow_amp,
-        "spike_amplitude": spike_amp,
         "amplitude_ratio": amp_ratio,
         "latency_ms": latency_ms,
         "duration_ms": duration_ms
