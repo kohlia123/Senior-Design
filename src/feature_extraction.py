@@ -46,26 +46,27 @@ def detect_spike_idx(epoch: np.ndarray,
     epoch = np.asarray(epoch, dtype=float)
     n = epoch.size
     if n < 3:
-        return None, 0.0, np.zeros_like(epoch, dtype=bool)
+        return None, 0.0, 0.0, np.zeros_like(epoch, dtype=bool)
 
     # Estimate signal scale using Median Absolute Deviation (MAD)
     mad = np.median(np.abs(epoch - np.median(epoch)))
     scale = 1.4826 * mad  # Converts MAD to standard deviation equivalent
     if scale <= 1e-12:  # Avoid division by zero / flat signal
-        return None, 0.0, np.zeros_like(epoch, dtype=bool)
+        return None, 0.0, 0.0, np.zeros_like(epoch, dtype=bool)
 
     # Define threshold for “active” spike samples
     thr = k * scale
     active = np.abs(epoch) >= thr  # marks which samples are big enough
 
     if not np.any(active):  # No samples exceed threshold → no IED
-        return None, 0.0, np.zeros_like(epoch, dtype=bool)
+        return None, 0.0, 0.0, np.zeros_like(epoch, dtype=bool)
 
     # Pick strongest active sample
     active_idxs = np.where(active)[0]
     spike_idx = active_idxs[np.argmax(np.abs(epoch[active_idxs]))]
+    spike_amp = np.abs(epoch[spike_idx])
 
-    return spike_idx, thr, active
+    return spike_idx, spike_amp, thr, active
 
 
 # Sharpness
@@ -405,6 +406,26 @@ def ied_duration_ms(epoch: np.ndarray,
 
 
 # Amplitude
-def get_ptp_amplitude(epochs):
-    return np.ptp(epochs, axis=1)
+# def get_ptp_amplitude(epoch: np.ndarray,
+#                       sfreq: float,
+#                       spike_idx: int = None,
+#                       window_ms: float = 50) -> float:
+#     # If spike index is not provided, compute PTP for the whole epoch
+#     if spike_idx is None:
+#         return 0.0
+#
+#     # Convert window size from ms to samples
+#     window_samples = int((window_ms/2) / 1000 * sfreq)
+#
+#     # Make sure the window stays within epoch bounds
+#     start = max(spike_idx - window_samples, 0)
+#     end = min(spike_idx + window_samples, len(epoch))
+#
+#     # Slice the epoch around the spike
+#     window_signal = epoch[start:end]
+#
+#     # Compute peak-to-peak amplitude in that window
+#     ptp_value = np.ptp(window_signal)
+#
+#     return ptp_value
 

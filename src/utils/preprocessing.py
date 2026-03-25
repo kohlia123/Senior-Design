@@ -54,13 +54,15 @@ def extract_epochs_features(epochs, subj, sfreq):
         mid_idx = len(epoch) // 2
 
         # Detect spike index using MAD-based method
-        spike_idx, thr, active = detect_spike_idx(epoch, k=3.5)
+        spike_idx, spike_amp, thr, active = detect_spike_idx(epoch, k=3.5)
 
         # Base metadata and Morphology
         row = {
             'subj': subj,
             'epoch_id': i,
+            # 'ptp_amp': get_ptp_amplitude(epoch, sfreq, spike_idx=spike_idx, window_ms=250),
             'ptp_amp': np.ptp(epoch),
+            'spike_amplitude': spike_amp,
             'sharpness': feat_sharpness(epoch, sfreq),
             'ied_duration': ied_duration_ms(epoch, sfreq, spike_idx=spike_idx, active=active, min_ms=5.0)
         }
@@ -70,7 +72,7 @@ def extract_epochs_features(epochs, subj, sfreq):
         # plt.show()
 
         # Extract Slow After-wave (returns bool, dict)
-        _, slow_feats = feat_slow_afterwave(epoch, sfreq, spike_index=mid_idx)
+        _, slow_feats = feat_slow_afterwave(epoch, sfreq, spike_idx=spike_idx)
         if slow_feats:
             row.update(slow_feats)
         else:
