@@ -72,6 +72,7 @@ def detect_spike_idx(epoch: np.ndarray,
 # Sharpness
 def feat_sharpness(epoch_1ch: np.ndarray,
                    sfreq: float,
+                   peak_idx: int = None,
                    window_ms: float = 5.0) -> float:
     x = np.asarray(epoch_1ch, dtype=float)
 
@@ -83,7 +84,8 @@ def feat_sharpness(epoch_1ch: np.ndarray,
         return np.nan
 
     # Find index of the peak (maximum absolute amplitude)
-    peak_idx = int(np.argmax(np.abs(x)))
+    if peak_idx is None:
+        peak_idx = int(np.argmax(np.abs(x)))
 
     # Convert window size from ms → samples
     w = max(1, int(round((window_ms / 1000.0) * sfreq)))
@@ -190,19 +192,25 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     # Define threshold as 50% of slow wave peak amplitude
     threshold = 0.5 * slow_amp
 
-    # Count samples where slow signal exceeds half amplitude
-    duration_samples = np.sum(np.abs(slow) > threshold)
+    # Find indices where slow wave exceeds threshold
+    above = np.abs(slow) > threshold
+
+    # Find contiguous segments
+    idx = np.where(above)[0]
+    if len(idx) == 0:
+        duration_samples = 0
+        duration_idx = None
+    else:
+        # Split into contiguous groups
+        segments = np.split(idx, np.where(np.diff(idx) != 1)[0] + 1)
+
+        # Keep the segment containing the peak
+        peak_idx = np.argmax(np.abs(slow))
+        duration_idx = next(seg for seg in segments if peak_idx in seg)
+        duration_samples = len(duration_idx)
 
     # Convert duration to milliseconds
     duration_ms = (duration_samples / sfreq) * 1000
-
-    # # Auxiliary function for testing: visualize the epoch with the spike marked
-    # duration_idx = np.where(np.abs(slow) > threshold)[0] + slow_wave_idx[0]
-    # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx, slow_wave=slow_wave_idx,
-    #                      slow_wave_max=spike_idx+latency_samples,
-    #                      slow_wave_duration=duration_idx,
-    #                      title=f"slow after wave")
-    # plt.show()
 
     # Compute amplitude ratio
     # Ratio between slow wave amplitude and spike amplitude
@@ -222,6 +230,14 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
         "latency_ms": latency_ms,
         "duration_ms": duration_ms
     }
+
+    # Auxiliary function for testing: visualize the epoch with the spike marked
+    # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx,
+    #                      slow_wave=slow,
+    #                      slow_wave_idx=slow_wave_idx,
+    #                      slow_wave_duration=slow_wave_idx[0] + duration_idx,
+    #                      title=f"slow after wave")
+    # plt.show()
 
     return slow_present, features
 
@@ -406,26 +422,26 @@ def ied_duration_ms(epoch: np.ndarray,
 
 
 # Amplitude
-# def get_ptp_amplitude(epoch: np.ndarray,
-#                       sfreq: float,
-#                       spike_idx: int = None,
-#                       window_ms: float = 50) -> float:
-#     # If spike index is not provided, compute PTP for the whole epoch
-#     if spike_idx is None:
-#         return 0.0
-#
-#     # Convert window size from ms to samples
-#     window_samples = int((window_ms/2) / 1000 * sfreq)
-#
-#     # Make sure the window stays within epoch bounds
-#     start = max(spike_idx - window_samples, 0)
-#     end = min(spike_idx + window_samples, len(epoch))
-#
-#     # Slice the epoch around the spike
-#     window_signal = epoch[start:end]
-#
-#     # Compute peak-to-peak amplitude in that window
-#     ptp_value = np.ptp(window_signal)
-#
-#     return ptp_value
+def get_ptp_amplitude(epoch: np.ndarray,
+                      sfreq: float,
+                      spike_idx: int = None,
+                      window_ms: float = 50) -> float:
+    # If spike index is not provided, compute PTP for the whole epoch
+    if spike_idx is None:
+        return 0.0
+
+    # Convert window size from ms to samples
+    window_samples = int((window_ms/2) / 1000 * sfreq)
+
+    # Make sure the window stays within epoch bounds
+    start = max(spike_idx - window_samples, 0)
+    end = min(spike_idx + window_samples, len(epoch))
+
+    # Slice the epoch around the spike
+    window_signal = epoch[start:end]
+
+    # Compute peak-to-peak amplitude in that window
+    ptp_value = np.ptp(window_signal)
+
+    return ptp_value
 
