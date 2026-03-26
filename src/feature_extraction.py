@@ -122,6 +122,7 @@ def _bandpass(x, fs, low, high, order=4):
 def feat_slow_afterwave(epoch_1ch: np.ndarray,
                         sfreq: float,
                         spike_idx: int,
+                        slow_freq_range=(1.0, 5.0),
                         min_latency_ms: float = 20.0,
                         max_latency_ms: float = 300.0,
                         min_ratio: float = 0.2,
@@ -134,12 +135,12 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
 
     # Not enough points to analyze afterwave → return False with empty features
     if n < 3:
-        return False, {}
+        return {}
 
     # Handle missing spike index
     if spike_idx is None:
         # spike_idx = int(np.argmax(np.abs(epoch)))
-        return False, {}
+        return {}
     else:
         # Ensure spike index is within valid bounds
         spike_idx = int(np.clip(spike_idx, 0, n - 1))
@@ -149,7 +150,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
 
     # If spike amplitude is zero, cannot compute meaningful ratio → return
     if spike_amp == 0:
-        return False, {}
+        return {}
 
     # Define search window after the spike
     # Convert latency bounds from milliseconds to samples
@@ -162,7 +163,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
 
     # If window is outside signal bounds → no afterwave possible
     if start >= n:
-        return False, {}
+        return {}
 
     # Extract post-spike segment
     slow_wave_idx = np.arange(start, end)
@@ -174,11 +175,11 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
         # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx, slow_wave=slow_wave_idx,
         #                      title=f"slow after wave")
         # plt.show()
-        return False, {}
+        return {}
 
     # Isolate slow activity (afterwave)
-    # Bandpass filter to keep slow frequencies (1–4 Hz typical slow wave)
-    slow = _bandpass(window, sfreq, 1.0, 4.0)
+    # Bandpass filter to keep slow frequencies (1–5 Hz typical slow wave)
+    slow = _bandpass(window, sfreq, slow_freq_range[0], slow_freq_range[1])
 
     # Find peak of slow wave (max absolute amplitude)
     slow_peak_idx = np.argmax(np.abs(slow))
@@ -223,24 +224,21 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
         min_latency_ms <= latency_ms <= max_latency_ms  # occurs in expected time window
     )
 
-    # Store extracted features
-    features = {
-        "slow_amplitude": slow_amp,
-        "amplitude_ratio": amp_ratio,
-        "latency_ms": latency_ms,
-        "duration_ms": duration_ms
-    }
-
     # Auxiliary function for testing: visualize the epoch with the spike marked
     # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx,
     #                      slow_wave=slow,
     #                      slow_wave_idx=slow_wave_idx,
     #                      slow_wave_duration=slow_wave_idx[0] + duration_idx,
-    #                      title=f"slow after wave")
+    #                      latency=latency_samples,
+    #                      title=f"slow after present: {slow_present}")
     # plt.show()
 
-    return slow_present, features
-
+    return {
+        "slow_afterwave_amplitude": slow_amp,
+        "slow_afterwave_amplitude_ratio": amp_ratio,
+        "slow_afterwave_latency_ms": latency_ms,
+        "slow_afterwave_duration_ms": duration_ms
+    }
 
 # Background disruption
 def feat_background_disruption(epoch_1ch: np.ndarray,
