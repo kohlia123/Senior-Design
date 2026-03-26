@@ -182,7 +182,20 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     slow = _bandpass(window, sfreq, slow_freq_range[0], slow_freq_range[1])
 
     # Find peak of slow wave (max absolute amplitude)
-    slow_peak_idx = np.argmax(np.abs(slow))
+    # slow_peak_idx = np.argmax(np.abs(slow))
+    d = np.diff(slow)
+    sign_d = np.sign(d)
+    sign_change = np.diff(sign_d)
+
+    max_idx = np.where(sign_change < 0)[0] + 1  # max: +1 → -1  → diff = -2
+    min_idx = np.where(sign_change > 0)[0] + 1  # min: -1 → +1 → diff = +2
+
+    candidates = np.concatenate([max_idx, min_idx])
+    if len(candidates) > 0:
+        slow_peak_idx = candidates[np.argmax(np.abs(slow[candidates]))]
+    else:
+        slow_peak_idx = np.argmax(np.abs(slow))
+
     slow_amp = np.abs(slow[slow_peak_idx])
 
     # Compute latency of slow wave peak relative to spike (in ms)
@@ -228,10 +241,11 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx,
     #                      slow_wave=slow,
     #                      slow_wave_idx=slow_wave_idx,
+    #                      slow_wave_peak_idx=slow_peak_idx,
     #                      slow_wave_duration=slow_wave_idx[0] + duration_idx,
     #                      latency=latency_samples,
     #                      title=f"slow after present: {slow_present}")
-    # plt.show()
+    plt.show()
 
     return {
         "slow_afterwave_amplitude": slow_amp,
