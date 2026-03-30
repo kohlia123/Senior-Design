@@ -125,10 +125,53 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
                         spike_idx: int,
                         slow_freq_range=(1.0, 5.0),
                         min_latency_ms: float = 20.0,
-                        max_latency_ms: float = 300.0,
-                        min_ratio: float = 0.2,
-                        min_duration_ms: float = 40.0):
+                        max_latency_ms: float = 300.0):
+    """
+    Extract slow afterwave features from a single-channel EEG epoch.
 
+    This function detects and characterizes the slow wave that follows a spike.
+    It identifies the slow component within a post-spike latency window,
+    estimates its peak amplitude, latency, and duration.
+
+    Parameters
+    ----------
+    epoch_1ch : np.ndarray
+        1D array containing the EEG signal for a single epoch and channel.
+    sfreq : float
+        Sampling frequency of the signal in Hz.
+    spike_idx : int
+        Index of the detected spike within the epoch.
+    slow_freq_range : tuple of float, optional (default: (1.0, 5.0))
+        Frequency band (Hz) used to isolate the slow afterwave via bandpass filtering.
+    min_latency_ms : float, optional (default: 20.0)
+        Minimum expected latency (in ms) after the spike for the slow wave.
+    max_latency_ms : float, optional (default: 300.0)
+        Maximum expected latency (in ms) after the spike for the slow wave.
+
+
+    Returns
+    -------
+    dict
+        Dictionary containing extracted features:
+        - "slow_afterwave_amplitude": float
+            Peak absolute amplitude of the slow wave.
+        - "slow_afterwave_amplitude_ratio": float
+            Ratio between slow wave amplitude and spike amplitude.
+        - "slow_afterwave_latency_ms": float
+            Latency (ms) from spike to slow wave peak.
+        - "slow_afterwave_duration_ms": float
+            Duration (ms) of the slow wave (based on half-amplitude threshold).
+
+        Returns an empty dictionary if no valid slow afterwave can be computed.
+
+    Notes
+    -----
+    - The slow wave is extracted using bandpass filtering in the specified frequency range.
+    - Peak detection is performed using first-derivative sign changes to identify local extrema.
+    - Duration is defined as the contiguous segment around the peak where the signal exceeds
+      50% of the peak amplitude.
+    - If no samples exceed the threshold, duration defaults to zero.
+    """
     epoch = np.asarray(epoch_1ch, dtype=float)
 
     # Epoch sample size
@@ -235,11 +278,13 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     amp_ratio = slow_amp / spike_amp
 
     # Determine if slow afterwave is present
-    slow_present = (
-        amp_ratio >= min_ratio and                      # slow wave is large enough
-        duration_ms >= min_duration_ms and              # slow wave lasts long enough
-        min_latency_ms <= latency_ms <= max_latency_ms  # occurs in expected time window
-    )
+    # min_ratio = 0.2  # min ratio between slow_amp and spike_amp to consider the slow wave significant
+    # min_duration_ms= 40.0  # min duration (in ms) required for the slow wave
+    # slow_present = (
+    #     amp_ratio >= min_ratio and                      # slow wave is large enough
+    #     duration_ms >= min_duration_ms and              # slow wave lasts long enough
+    #     min_latency_ms <= latency_ms <= max_latency_ms  # occurs in expected time window
+    # )
 
     # Auxiliary function for testing: visualize the epoch with the spike marked
     # fig, ax = plot_epoch(epoch, sfreq, spike_idx=spike_idx,
