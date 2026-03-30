@@ -81,8 +81,9 @@ def plot_ied(
 
 
 def plot_epoch(epoch, sfreq, spike_idx=None, mad=None, k=None, active=None,
-               slow_wave_idx=None,
                slow_wave=None,
+               slow_wave_idx=None,
+               slow_wave_peak_idx=None,
                slow_wave_duration=None,
                latency=None,
                title="IED Epoch"):
@@ -129,10 +130,9 @@ def plot_epoch(epoch, sfreq, spike_idx=None, mad=None, k=None, active=None,
                 color='green',
                 linestyle='--',
                 linewidth=1.5,
-                label='Filtered slow (1–4 Hz)')
+                label='Filtered slow (1–5 Hz)')
 
         # Peak as point
-        slow_wave_peak_idx = np.argmax(np.abs(slow_wave))
         ax.scatter(times[slow_wave_peak_idx + slow_wave_idx[0]],
                    slow_wave[slow_wave_peak_idx],
                    color='green', s=40, zorder=5, label='slow_amp')
@@ -146,8 +146,7 @@ def plot_epoch(epoch, sfreq, spike_idx=None, mad=None, k=None, active=None,
         sign = np.sign(np.mean(epoch[slow_wave_duration]))
 
         # Threshold where duration is defined
-        slow_peak_idx = np.argmax(np.abs(slow_wave))
-        slow_amp = np.abs(slow_wave[slow_peak_idx])
+        slow_amp = np.abs(slow_wave[slow_wave_peak_idx])
         y_arrow = sign * (0.5 * slow_amp)
 
         # Arrow
@@ -172,8 +171,7 @@ def plot_epoch(epoch, sfreq, spike_idx=None, mad=None, k=None, active=None,
         end = spike_idx + latency
 
         # Threshold where duration is defined
-        slow_peak_idx = np.argmax(np.abs(slow_wave))
-        slow_amp = np.abs(slow_wave[slow_peak_idx])
+        slow_amp = np.abs(slow_wave[slow_wave_peak_idx])
 
         # Arrow
         ax.annotate(
