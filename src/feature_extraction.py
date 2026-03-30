@@ -3,6 +3,7 @@ from scipy.signal import butter, filtfilt, welch
 from src.utils.plotting import plot_epoch
 import matplotlib.pyplot as plt
 import scipy.stats as sp_stats
+from scipy.ndimage import gaussian_filter1d
 
 
 def detect_spike_idx(epoch: np.ndarray,
@@ -177,6 +178,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
         # plt.show()
         return {}
 
+
     # Isolate slow activity (afterwave)
     # Bandpass filter to keep slow frequencies (1–5 Hz typical slow wave)
     slow = _bandpass(window, sfreq, slow_freq_range[0], slow_freq_range[1])
@@ -184,7 +186,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     # Find peak of slow wave (max absolute amplitude)
     # slow_peak_idx = np.argmax(np.abs(slow))
     d = np.diff(slow)
-    sign_d = np.sign(d)
+    sign_d = np.sign(d[1:-1])
     sign_change = np.diff(sign_d)
 
     max_idx = np.where(sign_change < 0)[0] + 1  # max: +1 → -1  → diff = -2
@@ -200,7 +202,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
 
     # Compute latency of slow wave peak relative to spike (in ms)
     latency_samples = slow_peak_idx + min_samples  # from the spike
-    latency_ms = (latency_samples / sfreq) * 1000
+    latency_ms = (latency_samples / sfreq) * 1000 - min_latency_ms
 
     # Estimate slow wave duration
     # Define threshold as 50% of slow wave peak amplitude
@@ -218,10 +220,12 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
         # Split into contiguous groups
         segments = np.split(idx, np.where(np.diff(idx) != 1)[0] + 1)
 
-        # Keep the segment containing the peak
-        peak_idx = np.argmax(np.abs(slow))
-        duration_idx = next(seg for seg in segments if peak_idx in seg)
-        duration_samples = len(duration_idx)
+        # Keep the segment containing the detected peak
+        duration_idx = next(
+            (seg for seg in segments if slow_peak_idx in seg),
+            None
+        )
+        duration_samples = len(duration_idx) if duration_idx is not None else 0
 
     # Convert duration to milliseconds
     duration_ms = (duration_samples / sfreq) * 1000
@@ -245,7 +249,7 @@ def feat_slow_afterwave(epoch_1ch: np.ndarray,
     #                      slow_wave_duration=slow_wave_idx[0] + duration_idx,
     #                      latency=latency_samples,
     #                      title=f"slow after present: {slow_present}")
-    plt.show()
+    # plt.show()
 
     return {
         "slow_afterwave_amplitude": slow_amp,
