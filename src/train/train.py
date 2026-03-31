@@ -20,16 +20,27 @@ from sklearn.metrics import (
 from src.utils.preprocessing import get_subj_data
 from src.config import N_SUB
 
+
+# Show all rows and columns
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 1000)  # adjust as needed
+pd.set_option('display.precision', 6)  # optional: control decimals
+
+
 def build_dataset(subjects):
     # This runs get_subj_data for multiple subjects in parallel
     results = Parallel(n_jobs=-1)(delayed(get_subj_data)(s) for s in subjects)
-    
+    # results = [get_subj_data(s) for s in subjects]
+
+
     X_all = [res[0] for res in results]
     y_all = [y for res in results for y in res[1]]
     
     X = pd.concat(X_all, axis=0, ignore_index=True)
     y = np.asarray(y_all, dtype=int)
     return X, y
+
 
 def run_training_pipeline(X, y, n_splits=5, random_state=15):
     metrics = {
@@ -159,9 +170,11 @@ def run_training_pipeline(X, y, n_splits=5, random_state=15):
 
     return results
 
+
 if __name__ == "__main__":
     # Load list of subjects (e.g., ['01', '02', ...])
     subjects = [f"{i:02d}" for i in range(2, N_SUB + 1)]
+    # subjects = ['09']
     
     # Build dataset
     X_feat, y = build_dataset(subjects)
