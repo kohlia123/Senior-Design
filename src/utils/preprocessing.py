@@ -8,7 +8,7 @@ from src.feature_extraction import (
     detect_spike_idx,
     feat_sharpness, 
     ied_duration_ms, 
-    get_ptp_amplitude, 
+    get_ptp_amplitude,
     feat_slow_afterwave,
     feat_background_disruption
 )
@@ -45,9 +45,16 @@ def extract_epochs_features(epochs, subj, sfreq):
     feats = []
     
     # Pre-define column names for consistent DataFrame shape
-    slow_wave_cols = ["slow_amplitude", "spike_amplitude", "amplitude_ratio", "latency_ms", "duration_ms"]
-    bg_cols = ["background_rms", "background_std", "background_line_length", 
-               "background_delta_power", "background_alpha_power", "event_rms_ratio_bg"]
+    slow_wave_cols = ["slow_afterwave_amplitude",
+                      "slow_afterwave_amplitude_ratio",
+                      "slow_afterwave_latency_ms",
+                      "slow_afterwave_duration_ms"]
+    bg_cols = ["background_rms",
+               "background_std",
+               "background_line_length",
+               "background_delta_power",
+               "background_alpha_power",
+               "event_rms_ratio_bg"]
 
     for i, epoch in enumerate(epochs_np):
         # Anchor all searches at the midpoint (500ms mark)
@@ -60,10 +67,9 @@ def extract_epochs_features(epochs, subj, sfreq):
         row = {
             'subj': subj,
             'epoch_id': i,
-            # 'ptp_amp': get_ptp_amplitude(epoch, sfreq, spike_idx=spike_idx, window_ms=250),
             'ptp_amp': np.ptp(epoch),
             'spike_amplitude': spike_amp,
-            'sharpness': feat_sharpness(epoch, sfreq),
+            'sharpness': feat_sharpness(epoch, sfreq, peak_idx=spike_idx),
             'ied_duration': ied_duration_ms(epoch, sfreq, spike_idx=spike_idx, active=active, min_ms=5.0)
         }
 
@@ -72,7 +78,7 @@ def extract_epochs_features(epochs, subj, sfreq):
         # plt.show()
 
         # Extract Slow After-wave (returns bool, dict)
-        _, slow_feats = feat_slow_afterwave(epoch, sfreq, spike_idx=spike_idx)
+        slow_feats = feat_slow_afterwave(epoch, sfreq, spike_idx=spike_idx)
         if slow_feats:
             row.update(slow_feats)
         else:
@@ -95,8 +101,8 @@ def extract_epochs_features(epochs, subj, sfreq):
     return final_feats
 
 def get_subj_data(subj):
-    window_size_ms = 1200  
-    stride_ms = 250       
+    window_size_ms = 1200
+    stride_ms = 250
 
     # Load raw data
     raw = read_raw_bids(
