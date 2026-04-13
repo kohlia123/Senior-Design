@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import joblib
+import os
+import sys
+sys.path.append("/Users/amritakohli/Documents/Senior-Design")
 
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
@@ -14,7 +17,7 @@ from src.config import N_SUB
 
 FIXED_THRESHOLD = 0.99
 MODEL_PATH = "models/trained_model.joblib"  
-SUBJECT_ID = "01"  # change this to whichever subject you want to test
+SUBJECT_ID = "openieegDetroit002"  # change this to whichever subject you want to test
 
 def test_single_subject(subject_id, model_path, threshold=FIXED_THRESHOLD):
     print(f"--- Testing on Subject {subject_id} ---")
@@ -32,7 +35,8 @@ def test_single_subject(subject_id, model_path, threshold=FIXED_THRESHOLD):
     X = X_raw[feature_cols]
 
     # 3. Load trained model
-    model = joblib.load(model_path)
+    checkpoint = joblib.load(model_path)
+    model = checkpoint['model']
     print(f"Model loaded from: {model_path}")
 
     # 4. Predict using fixed threshold
